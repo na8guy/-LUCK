@@ -8,7 +8,6 @@
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.1/dist/ethers.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.14.0/dist/index.umd.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -16,7 +15,6 @@
   <div id="root"></div>
   <script type="text/babel">
     const { ethers } = window;
-    const { EthereumProvider } = window.WalletConnect;
 
     // Placeholder contract addresses (replace with actual addresses)
     const LUCK_TOKEN_ADDRESS = "0x7c1209fb8f73e37b43f25da2dd81a00565f90607";
@@ -50,7 +48,7 @@
       const [isLoading, setIsLoading] = React.useState(false);
       const [action, setAction] = React.useState("connect"); // "connect", "buy"
       const [isMobile, setIsMobile] = React.useState(false);
-      const [walletProvider, setWalletProvider] = React.useState(null); // "metamask", "walletconnect", null
+      const [metaMaskDetected, setMetaMaskDetected] = React.useState(false);
 
       // Initialize Telegram Web App and fetch lottery info
       React.useEffect(() => {
@@ -71,9 +69,9 @@
         const userAgent = navigator.userAgent || navigator.vendor || window.opera;
         setIsMobile(/android|iPhone|iPad|iPod/i.test(userAgent));
 
-        // Check for MetaMask (only for external browser)
-        if (window.ethereum && !window.Telegram.WebApp.initDataUnsafe) {
-          setWalletProvider("metamask");
+        // Check for MetaMask
+        if (window.ethereum) {
+          setMetaMaskDetected(true);
           const provider = new ethers.BrowserProvider(window.ethereum);
           setProvider(provider);
 
@@ -81,39 +79,38 @@
           const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
           setLuckToken(luckToken);
           setLotteryContract(lotteryContract);
-        } else {
-          setWalletProvider(null);
-          setStatus(isMobile
-            ? "Please connect your wallet using MetaMask or WalletConnect."
-            : "Please connect your wallet using WalletConnect, or open in a browser to use MetaMask.");
-        }
 
-        // Fetch lottery info if provider is set
-        const fetchLotteryInfo = async () => {
-          if (!lotteryContract) return;
-          try {
-            const currentId = await lotteryContract.currentLotteryId();
-            if (currentId > 0) {
-              const [startTime, endTime, resultTime, ended, participantCount, prizePool] = await lotteryContract.getLotteryInfo(currentId);
-              const ticketPrice = await lotteryContract.ticketPrice();
-              setLotteryInfo({
-                id: currentId,
-                startTime: new Date(startTime * 1000).toUTCString(),
-                endTime: new Date(endTime * 1000).toUTCString(),
-                resultTime: new Date(resultTime * 1000).toUTCString(),
-                ended,
-                participantCount,
-                prizePool: ethers.formatEther(prizePool)
-              });
-              setTicketPrice(ethers.formatEther(ticketPrice));
-            } else {
-              setLotteryInfo({ id: 0 });
+          // Fetch lottery info
+          const fetchLotteryInfo = async () => {
+            try {
+              const currentId = await lotteryContract.currentLotteryId();
+              if (currentId > 0) {
+                const [startTime, endTime, resultTime, ended, participantCount, prizePool] = await lotteryContract.getLotteryInfo(currentId);
+                const ticketPrice = await lotteryContract.ticketPrice();
+                setLotteryInfo({
+                  id: currentId,
+                  startTime: new Date(startTime * 1000).toUTCString(),
+                  endTime: new Date(endTime * 1000).toUTCString(),
+                  resultTime: new Date(resultTime * 1000).toUTCString(),
+                  ended,
+                  participantCount,
+                  prizePool: ethers.formatEther(prizePool)
+                });
+                setTicketPrice(ethers.formatEther(ticketPrice));
+              } else {
+                setLotteryInfo({ id: 0 });
+              }
+            } catch (error) {
+              setStatus(`Error fetching lottery info: ${error.message}`);
             }
-          } catch (error) {
-            setStatus(`Error fetching lottery info: ${error.message}`);
-          }
-        };
-        fetchLotteryInfo();
+          };
+          fetchLotteryInfo();
+        } else {
+          setMetaMaskDetected(false);
+          setStatus(isMobile
+            ? "MetaMask not detected in Telegram's browser. Please connect using the MetaMask mobile app."
+            : "MetaMask not detected. Please install MetaMask or open this app in a browser where MetaMask is installed.");
+        }
 
         // Pre-fill ticket amount from query params (if coming from /buy_tickets)
         const params = new URLSearchParams(window.location.search);
@@ -127,7 +124,7 @@
         return () => {
           window.Telegram.WebApp.MainButton.offClick();
         };
-      }, [lotteryContract]);
+      }, []);
 
       // Update MainButton based on state
       React.useEffect(() => {
@@ -140,17 +137,19 @@
         }
 
         window.Telegram.WebApp.MainButton.enable();
-        if (!walletProvider && !account) {
+        if (!metaMaskDetected) {
           if (isMobile) {
             window.Telegram.WebApp.MainButton.setText("Connect with MetaMask");
-            window.Telegram.WebApp.MainButton.onClick(connectWalletMetaMaskMobile);
+            window.Telegram.WebApp.MainButton.onClick(connectWalletMobile);
           } else {
-            window.Telegram.WebApp.MainButton.setText("Connect with WalletConnect");
-            window.Telegram.WebApp.MainButton.onClick(connectWalletConnect);
+            window.Telegram.WebApp.MainButton.setText("Open in Browser");
+            window.Telegram.WebApp.MainButton.onClick(() => {
+              window.Telegram.WebApp.openLink(window.location.href);
+            });
           }
         } else if (action === "connect" && !account) {
           window.Telegram.WebApp.MainButton.setText("Connect Wallet");
-          window.Telegram.WebApp.MainButton.onClick(walletProvider === "metamask" ? connectWalletMetaMask : connectWalletConnect);
+          window.Telegram.WebApp.MainButton.onClick(connectWallet);
         } else if (action === "buy") {
           window.Telegram.WebApp.MainButton.setText(`Buy ${ticketAmount} Ticket${ticketAmount > 1 ? 's' : ''}`);
           window.Telegram.WebApp.MainButton.onClick(buyTickets);
@@ -158,9 +157,9 @@
           window.Telegram.WebApp.MainButton.setText("Buy Tickets");
           window.Telegram.WebApp.MainButton.onClick(() => setAction("buy"));
         }
-      }, [walletProvider, isMobile, account, action, ticketAmount, isLoading]);
+      }, [metaMaskDetected, isMobile, account, action, ticketAmount, isLoading]);
 
-      const connectWalletMetaMask = async () => {
+      const connectWallet = async () => {
         setIsLoading(true);
         setStatus("");
         try {
@@ -197,7 +196,7 @@
         }
       };
 
-      const connectWalletMetaMaskMobile = async () => {
+      const connectWalletMobile = async () => {
         setIsLoading(true);
         setStatus("");
         try {
@@ -207,66 +206,19 @@
           
           // Create a deep link to MetaMask for signing
           const encodedMessage = encodeURIComponent(message);
-          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
+          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}\\/`;
           
           // Open MetaMask app
           window.Telegram.WebApp.openLink(deepLink);
           
-          setStatus("Please sign the message in MetaMask, then return to Telegram to continue.\nAfter signing, you may need to reconnect your wallet to proceed.");
+          // Note: The actual signing and verification will need to be handled via a callback or redirect.
+          // Since MetaMask deep linking doesn't allow direct callback to Telegram, we'll instruct the user to return.
+          setStatus("Please sign the message in MetaMask and return to Telegram to continue.");
+          
+          // For this example, we'll assume the user will manually return to the app.
+          // In a production environment, you might need a backend to handle the callback and signature verification.
         } catch (error) {
           setStatus(`Error connecting wallet on mobile: ${error.message}`);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      const connectWalletConnect = async () => {
-        setIsLoading(true);
-        setStatus("");
-        try {
-          // Initialize WalletConnect provider
-          const wcProvider = await EthereumProvider.init({
-            projectId: "d2d229c72d13ca005fc97d00ecc76757", // Replace with your WalletConnect Project ID
-            chains: [97], // BNB Chain mainnet (use 97 for testnet)
-            showQrModal: true,
-            methods: ["eth_requestAccounts", "eth_sign", "personal_sign"],
-            events: ["chainChanged", "accountsChanged"],
-          });
-
-          // Connect to WalletConnect
-          await wcProvider.connect();
-          const provider = new ethers.BrowserProvider(wcProvider);
-          setProvider(provider);
-          setWalletProvider("walletconnect");
-
-          const accounts = await provider.send("eth_requestAccounts", []);
-          const signer = await provider.getSigner();
-          setAccount(accounts[0]);
-          setSigner(signer);
-          setStatus("Wallet connected via WalletConnect! Verifying ownership...");
-
-          // Set up contracts
-          const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-          const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-          setLuckToken(luckToken);
-          setLotteryContract(lotteryContract);
-
-          // Generate nonce and sign message
-          const nonce = Math.floor(Math.random() * 900000000) + 100000000;
-          const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
-          const signature = await signer.signMessage(message);
-
-          // Send wallet address and signature to bot
-          window.Telegram.WebApp.sendData(JSON.stringify({
-            type: "wallet_verification",
-            address: accounts[0],
-            signature,
-            message
-          }));
-          setStatus("Wallet verification submitted! Please wait for confirmation.");
-          setAction("buy"); // Switch to buy mode after connecting
-        } catch (error) {
-          setStatus(`Error connecting with WalletConnect: ${error.message}`);
         } finally {
           setIsLoading(false);
         }
@@ -364,11 +316,11 @@
                 </div>
               ) : (
                 <p className="text-gray-600">
-                  {walletProvider === "metamask"
-                    ? "Click the button below to connect your MetaMask wallet."
+                  {metaMaskDetected
+                    ? "Click the button below to connect your wallet."
                     : isMobile
                       ? "Click the button below to connect with the MetaMask mobile app."
-                      : "Click the button below to connect with WalletConnect (or open in browser for MetaMask)."}
+                      : "MetaMask not detected. Click the button below to open in a browser where MetaMask is installed."}
                 </p>
               )}
             </div>
