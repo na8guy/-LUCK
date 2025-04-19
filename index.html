@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LuckyU - Wallet & Lottery Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.1/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { ethers } = window;
+
+    // Placeholder contract addresses (replace with actual addresses)
+    const LUCK_TOKEN_ADDRESS = "0xYourLuckTokenAddress";
+    const LOTTERY_CONTRACT_ADDRESS = "0xYourLotteryContractAddress";
+
+    // Simplified ABI for the contracts (replace with actual ABIs)
+    const LUCK_TOKEN_ABI = [
+      "function approve(address spender, uint256 amount) public returns (bool)",
+      "function allowance(address owner, address spender) public view returns (uint256)",
+      "function balanceOf(address account) public view returns (uint256)",
+      "function decimals() public view returns (uint8)"
+    ];
+    const LOTTERY_CONTRACT_ABI = [
+      "function enterLottery(uint256 numberOfTickets) public",
+      "function ticketPrice() public view returns (uint256)",
+      "function currentLotteryId() public view returns (uint256)",
+      "function getLotteryInfo(uint256 lotteryId) public view returns (uint256 startTime, uint256 endTime, uint256 resultTime, bool ended, uint256 participantCount, uint256 prizePool)"
+    ];
+
+    function App() {
+      const [telegramId, setTelegramId] = React.useState("");
+      const [account, setAccount] = React.useState(null);
+      const [provider, setProvider] = React.useState(null);
+      const [signer, setSigner] = React.useState(null);
+      const [lotteryContract, setLotteryContract] = React.useState(null);
+      const [luckToken, setLuckToken] = React.useState(null);
+      const [lotteryInfo, setLotteryInfo] = React.useState(null);
+      const [ticketPrice, setTicketPrice] = React.useState(0);
+      const [ticketAmount, setTicketAmount] = React.useState(1);
+      const [status, setStatus] = React.useState("");
+      const [isLoading, setIsLoading] = React.useState(false);
+
+      // Initialize Telegram Web App and fetch lottery info
+      React.useEffect(() => {
+        // Telegram Web App setup
+        if (window.Telegram && window.Telegram.WebApp) {
+          window.Telegram.WebApp.ready();
+          const user = window.Telegram.WebApp.initDataUnsafe.user;
+          if (user) {
+            setTelegramId(user.id.toString());
+          }
+        }
+
+        // Initialize Web3 provider and contracts
+        const initWeb3 = async () => {
+          if (window.ethereum) {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            setProvider(provider);
+
+            const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
+            const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+            setLuckToken(luckToken);
+            setLotteryContract(lotteryContract);
+
+            // Fetch lottery info
+            try {
+              const currentId = await lotteryContract.currentLotteryId();
+              if (currentId > 0) {
+                const [startTime, endTime, resultTime, ended, participantCount, prizePool] = await lotteryContract.getLotteryInfo(currentId);
+                const ticketPrice = await lotteryContract.ticketPrice();
+                setLotteryInfo({
+                  id: currentId,
+                  startTime: new Date(startTime * 1000).toUTCString(),
+                  endTime: new Date(endTime * 1000).toUTCString(),
+                  resultTime: new Date(resultTime * 1000).toUTCString(),
+                  ended,
+                  participantCount,
+                  prizePool: ethers.formatEther(prizePool)
+                });
+                setTicketPrice(ethers.formatEther(ticketPrice));
+              } else {
+                setLotteryInfo({ id: 0 });
+              }
+            } catch (error) {
+              setStatus(`Error fetching lottery info: ${error.message}`);
+            }
+          } else {
+            setStatus("Please install MetaMask to use this app.");
+          }
+
+          // Pre-fill ticket amount from query params (if coming from /buy_tickets)
+          const params = new URLSearchParams(window.location.search);
+          const tickets = params.get("tickets");
+          if (tickets) {
+            setTicketAmount(parseInt(tickets) || 1);
+          }
+        };
+
+        initWeb3();
+      }, []);
+
+      const connectWallet = async () => {
+        setIsLoading(true);
+        setStatus("");
+        try {
+          if (!provider) {
+            setStatus("MetaMask not detected. Please install MetaMask.");
+            setIsLoading(false);
+            return;
+          }
+
+          const accounts = await provider.send("eth_requestAccounts", []);
+          const signer = await provider.getSigner();
+          setAccount(accounts[0]);
+          setSigner(signer);
+          setStatus("Wallet connected! Verifying ownership...");
+
+          // Generate nonce and sign message
+          const nonce = Math.floor(Math.random() * 900000000) + 100000000;
+          const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
+          const signature = await signer.signMessage(message);
+
+          // Send wallet address and signature to bot
+          window.Telegram.WebApp.sendData(JSON.stringify({
+            type: "wallet_verification",
+            address: accounts[0],
+            signature,
+            message
+          }));
+          setStatus("Wallet verification submitted! Please wait for confirmation.");
+        } catch (error) {
+          setStatus(`Error connecting wallet: ${error.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const approveTokens = async (amount) => {
+        setIsLoading(true);
+        setStatus("");
+        try {
+          if (!signer || !luckToken) {
+            setStatus("Please connect your wallet first.");
+            setIsLoading(false);
+            return;
+          }
+
+          const amountBigInt = ethers.parseEther(amount.toString());
+          const tx = await luckToken.connect(signer).approve(LOTTERY_CONTRACT_ADDRESS, amountBigInt);
+          await tx.wait();
+          setStatus("Approval successful! You can now buy tickets.");
+        } catch (error) {
+          setStatus(`Error approving tokens: ${error.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const buyTickets = async () => {
+        setIsLoading(true);
+        setStatus("");
+        try {
+          if (!signer || !lotteryContract || !luckToken) {
+            setStatus("Please connect your wallet first.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (!lotteryInfo || lotteryInfo.id === 0) {
+            setStatus("No active lottery available.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (lotteryInfo.ended || new Date(lotteryInfo.endTime) < new Date()) {
+            setStatus("This lottery has ended. Please wait for the next one.");
+            setIsLoading(false);
+            return;
+          }
+
+          const totalCost = ticketPrice * ticketAmount;
+          const balance = await luckToken.balanceOf(account);
+          if (ethers.formatEther(balance) < totalCost) {
+            setStatus(`Insufficient $LUCK balance. You need ${totalCost} $LUCK.`);
+            setIsLoading(false);
+            return;
+          }
+
+          const allowance = await luckToken.allowance(account, LOTTERY_CONTRACT_ADDRESS);
+          if (ethers.formatEther(allowance) < totalCost) {
+            setStatus(`Insufficient allowance. Approving ${totalCost} $LUCK...`);
+            await approveTokens(totalCost);
+          }
+
+          const tx = await lotteryContract.connect(signer).enterLottery(ticketAmount);
+          await tx.wait();
+          setStatus(`Successfully bought ${ticketAmount} ticket(s)!`);
+
+          // Send confirmation to bot
+          window.Telegram.WebApp.sendData(JSON.stringify({
+            type: "purchased",
+            tickets: ticketAmount
+          }));
+        } catch (error) {
+          setStatus(`Error buying tickets: ${error.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-purple-500 to-pink-500 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
+            <div className="flex items-center justify-center mb-4">
+              <h1 className="text-3xl font-bold text-purple-600">LuckyU 🦙</h1>
+            </div>
+
+            {/* Wallet Section */}
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Wallet</h2>
+              {account ? (
+                <div className="bg-green-100 p-3 rounded-lg">
+                  <p className="text-green-800 font-medium">
+                    Connected: {account.slice(0, 6)}...{account.slice(-4)}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  disabled={isLoading}
+                  className={`w-full py-2 rounded-lg text-white font-semibold ${
+                    isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'
+                  }`}
+                >
+                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                </button>
+              )}
+            </div>
+
+            {/* Lottery Info Section */}
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Current Lottery</h2>
+              {lotteryInfo && lotteryInfo.id > 0 ? (
+                <div className="bg-gray-100 p-4 rounded-lg">
+                  <p className="text-gray-700">Lottery ID: #{lotteryInfo.id}</p>
+                  <p className="text-gray-700">Prize Pool: {lotteryInfo.prizePool} $LUCK</p>
+                  <p className="text-gray-700">Participants: {lotteryInfo.participantCount}</p>
+                  <p className="text-gray-700">Ends: {lotteryInfo.endTime}</p>
+                  <p className="text-gray-700">Ticket Price: {ticketPrice} $LUCK</p>
+                </div>
+              ) : (
+                <p className="text-gray-600">No active lottery yet. Stay tuned! 🦙</p>
+              )}
+            </div>
+
+            {/* Buy Tickets Section */}
+            {lotteryInfo && lotteryInfo.id > 0 && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Buy Tickets 🎟️</h2>
+                <div className="flex items-center space-x-4 mb-4">
+                  <input
+                    type="number"
+                    min="1"
+                    value={ticketAmount}
+                    onChange={(e) => setTicketAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-20 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    onClick={buyTickets}
+                    disabled={isLoading || !account}
+                    className={`flex-1 py-2 rounded-lg text-white font-semibold ${
+                      isLoading || !account ? 'bg-gray-400 cursor-not-allowed' : 'bg-pink-600 hover:bg-pink-700'
+                    }`}
+                  >
+                    {isLoading ? 'Processing...' : `Buy ${ticketAmount} Ticket${ticketAmount > 1 ? 's' : ''}`}
+                  </button>
+                </div>
+                <p className="text-gray-600 text-sm">
+                  Total Cost: {(ticketPrice * ticketAmount).toFixed(2)} $LUCK
+                </p>
+              </div>
+            )}
+
+            {/* Status Messages */}
+            {status && (
+              <div className={`p-3 rounded-lg text-sm ${
+                status.includes('Error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+              }`}>
+                {status}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
