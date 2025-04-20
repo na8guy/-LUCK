@@ -135,7 +135,7 @@
           console.log("Telegram Web App SDK not available, using telegramId from query:", telegramIdFromQuery);
         } else {
           console.warn("Not running in Telegram Web App environment, and no telegramId provided.");
-          setStatus("Error: Telegram ID not found. Please open this app via Telegram.");
+          setStatus("Error: Telegram ID not found. Please return to Telegram, restart the process, and ensure query parameters are preserved.");
         }
 
         // Detect mobile device and platform
@@ -220,17 +220,24 @@
               setLotteryContract(lotteryContract);
 
               const message = decodeURIComponent(messageFromQuery);
+              console.log("Signing message for action=sign:", message);
               const signature = await signer.signMessage(message);
               console.log("Message signed:", message, "Signature:", signature);
 
               // Send wallet address and signature to bot
-              window.Telegram.WebApp.sendData(JSON.stringify({
-                type: "wallet_verification",
-                address: accounts[0],
-                signature,
-                message
-              }));
-              setStatus("Wallet verification submitted! Please return to Telegram to continue.");
+              try {
+                window.Telegram.WebApp.sendData(JSON.stringify({
+                  type: "wallet_verification",
+                  address: accounts[0],
+                  signature,
+                  message
+                }));
+                console.log("Sent wallet verification data to Telegram bot.");
+                setStatus("Wallet verification submitted! Please return to Telegram to continue.");
+              } catch (sendError) {
+                console.error("Error sending data to Telegram bot:", sendError);
+                setStatus(`Wallet verification completed, but could not send to Telegram bot: ${sendError.message}. Please manually submit this to the bot: Address=${accounts[0]}, Signature=${signature}, Message=${message}`);
+              }
               setAction("buy");
             } catch (error) {
               setStatus(`Error signing message: ${error.message}`);
@@ -324,8 +331,27 @@
       }, [walletProvider, isMobile, account, action, ticketAmount, isLoading]);
 
       const openInExternalBrowser = () => {
-        const currentUrl = window.location.href;
-        window.Telegram.WebApp.openLink(currentUrl);
+        // Ensure query parameters are preserved
+        const params = new URLSearchParams(window.location.search);
+        const telegramIdFromQuery = params.get("telegramId");
+        const actionFromQuery = params.get("action");
+        const messageFromQuery = params.get("message");
+        const nonceFromQuery = params.get("nonce");
+
+        let url = `${window.location.host}${window.location.pathname}`;
+        const queryParams = [];
+        if (telegramIdFromQuery) queryParams.push(`telegramId=${telegramIdFromQuery}`);
+        if (actionFromQuery) queryParams.push(`action=${actionFromQuery}`);
+        if (messageFromQuery) queryParams.push(`message=${messageFromQuery}`);
+        if (nonceFromQuery) queryParams.push(`nonce=${nonceFromQuery}`);
+        if (queryParams.length > 0) {
+          url = `https://${url}?${queryParams.join('&')}`;
+        } else {
+          url = `https://${url}`;
+        }
+
+        console.log("Opening external browser with URL:", url);
+        window.Telegram.WebApp.openLink(url);
         setStatus(isIOS
           ? "Please copy the URL and open it in MetaMask's in-app browser to connect. Alternatively, try connecting below."
           : "Please connect MetaMask in the external browser. If MetaMask doesn't connect, try the button below.");
@@ -336,7 +362,7 @@
         setStatus("");
         try {
           if (!telegramId) {
-            setStatus("Error: Telegram ID not found. Please restart the process in Telegram.");
+            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process.");
             console.error("Telegram ID is missing during mobile wallet connection.");
             setIsLoading(false);
             return;
@@ -353,14 +379,14 @@
           // Log the deep link for debugging
           console.log("Deep link URL:", deepLink);
 
-          // Open MetaMask app
-          window.location.href = deepLink;
+          // Open MetaMask app using a direct link
           setStatus(`Opening MetaMask... If this doesn't work, please copy this URL and open it in MetaMask: ${deepLink}`);
+          return deepLink; // Return the deepLink for the <a> tag
         } catch (error) {
           setStatus(`Error opening MetaMask: ${error.message}. Please copy the deep link URL from the console and open it in MetaMask.`);
           console.error("Error opening MetaMask deep link:", error);
-        } finally {
           setIsLoading(false);
+          return null;
         }
       };
 
@@ -370,7 +396,7 @@
         try {
           if (!window.ethereum) {
             setStatus(isMobile
-              ? (isIOS
+              ? (isIOS.DISABLED
                   ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
                   : "MetaMask not detected. Please ensure MetaMask is installed and try again.")
               : "Please install MetaMask to connect your wallet.");
@@ -400,18 +426,42 @@
           console.log("MetaMask connected, account:", accounts[0]);
 
           // Generate nonce and sign message
+          if (!telegramId) {
+            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process.");
+            console.error("Telegram ID is missing during wallet verification.");
+            setIsLoading(false);
+            return;
+          }
+
           const nonce = Math.floor(Math.random() * 900000000) + 100000000;
           const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
-          const signature = await signer.signMessage(message);
+          console.log("Telegram ID:", telegramId, "Message to sign:", message);
+
+          let signature;
+          try {
+            signature = await signer.signMessage(message);
+            console.log("Message signed:", message, "Signature:", signature);
+          } catch (signError) {
+            setStatus(`Error signing message: ${signError.message}. Please try again.`);
+            console.error("Error signing message:", signError);
+            setIsLoading(false);
+            return;
+          }
 
           // Send wallet address and signature to bot
-          window.Telegram.WebApp.sendData(JSON.stringify({
-            type: "wallet_verification",
-            address: accounts[0],
-            signature,
-            message
-          }));
-          setStatus("Wallet verification submitted! Please wait for confirmation.");
+          try {
+            window.Telegram.WebApp.sendData(JSON.stringify({
+              type: "wallet_verification",
+              address: accounts[0],
+              signature,
+              message
+            }));
+            console.log("Sent wallet verification data to Telegram bot.");
+            setStatus("Wallet verification submitted! Please return to Telegram to continue.");
+          } catch (sendError) {
+            console.error("Error sending data to Telegram bot:", sendError);
+            setStatus(`Wallet verification completed, but could not send to Telegram bot: ${sendError.message}. Please manually submit this to the bot: Address=${accounts[0]}, Signature=${signature}, Message=${message}`);
+          }
           setAction("buy"); // Switch to buy mode after connecting
         } catch (error) {
           setStatus(`Error connecting wallet: ${error.message}`);
@@ -487,10 +537,16 @@
           console.log(`Bought ${ticketAmount} ticket(s) successfully.`);
 
           // Send confirmation to bot
-          window.Telegram.WebApp.sendData(JSON.stringify({
-            type: "purchased",
-            tickets: ticketAmount
-          }));
+          try {
+            window.Telegram.WebApp.sendData(JSON.stringify({
+              type: "purchased",
+              tickets: ticketAmount
+            }));
+            console.log("Sent ticket purchase confirmation to Telegram bot.");
+          } catch (sendError) {
+            console.error("Error sending ticket purchase data to Telegram bot:", sendError);
+            setStatus(`Successfully bought ${ticketAmount} ticket(s), but could not send confirmation to Telegram bot: ${sendError.message}. Please notify the bot manually.`);
+          }
         } catch (error) {
           setStatus(`Error buying tickets: ${error.message}`);
           console.error("Error buying tickets:", error);
@@ -498,6 +554,8 @@
           setIsLoading(false);
         }
       };
+
+      const deepLink = isMobile && !account && connectWalletMetaMaskMobile();
 
       return (
         <div className="min-h-screen bg-gradient-to-b from-purple-500 to-pink-500 flex items-center justify-center p-4">
@@ -527,12 +585,22 @@
                         : "Click the button below to connect with MetaMask in your browser."}
                   </p>
                   {!account && (
-                    <button
-                      onClick={isMobile ? connectWalletMetaMaskMobile : connectWalletMetaMask}
-                      className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-                    >
-                      {isMobile ? "Try Connecting MetaMask" : "Connect MetaMask"}
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={isMobile ? connectWalletMetaMaskMobile : connectWalletMetaMask}
+                        className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                      >
+                        {isMobile ? "Try Connecting MetaMask" : "Connect MetaMask"}
+                      </button>
+                      {isMobile && deepLink && (
+                        <a
+                          href={deepLink}
+                          className="block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-center"
+                        >
+                          Open in MetaMask
+                        </a>
+                      )}
+                    </div>
                   )}
                   {isMobile && isIOS && !walletProvider && (
                     <div className="mt-4 p-3 bg-gray-100 rounded-lg">
