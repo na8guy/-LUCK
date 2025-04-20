@@ -362,10 +362,19 @@
           
           // Create a deep link to MetaMask for signing
           const encodedMessage = encodeURIComponent(message);
-          const deepLink = `metamask://dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
+          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
           
+          function openMetaMaskUrl(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_self";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
           // Open MetaMask app
-          window.Telegram.WebApp.openLink(deepLink);
+          //window.Telegram.WebApp.openLink(deepLink);
+          openMetaMaskUrl(deepLink );
           
           setStatus("Please sign the message in MetaMask, then return to Telegram to continue.\nAfter signing, you may need to reconnect your wallet to proceed.");
           console.log("Opened MetaMask deep link:", deepLink);
