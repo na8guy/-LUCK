@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Connect</title>
     <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -45,6 +46,10 @@
             padding: 10px;
             border-radius: 5px;
         }
+        #qrCode {
+            display: none;
+            margin-top: 20px;
+        }
         #instructions {
             display: none;
             margin-top: 20px;
@@ -65,12 +70,13 @@
             <h3>Mobile Instructions</h3>
             <p>Follow these steps to connect your MetaMask wallet on mobile:</p>
             <ol>
-                <li><strong>Open MetaMask</strong>: Click the button below to open this page in the MetaMask app. If it doesn't open, ensure MetaMask is installed and try again.</li>
-                <li><strong>Connect and Sign</strong>: Once loaded in MetaMask's browser, click "Connect Wallet" again to connect and sign the message.</li>
+                <li><strong>Open MetaMask</strong>: Click "Connect Wallet" to open MetaMask via WalletConnect.</li>
+                <li><strong>Connect and Sign</strong>: Approve the connection in MetaMask and sign the message.</li>
             </ol>
-            <button onclick="openMetaMask()">Open in MetaMask App</button>
-            <p>If the button doesn't work, you can manually open MetaMask, go to the browser, and paste this URL:</p>
-            <code id="pageUrl"></code>
+        </div>
+        <div id="qrCode">
+            <p>Scan this QR code with your MetaMask app to connect (if on desktop):</p>
+            <img id="qrCodeImg" src="" alt="WalletConnect QR Code">
         </div>
         <div id="manualSubmission">
             <p>Please copy the following data and send it to your bot in Telegram:</p>
@@ -113,56 +119,31 @@
             return;
         }
 
-        // Display mobile instructions if on mobile and not in MetaMask's browser
-        if (isMobile && !isMetaMaskBrowser) {
+        // Show instructions if on mobile
+        if (isMobile) {
             document.getElementById('instructions').style.display = 'block';
-            document.getElementById('pageUrl').innerText = window.location.href;
-            document.getElementById('connectWalletBtn').style.display = 'none'; // Hide until loaded in MetaMask
-        } else {
-            document.getElementById('connectWalletBtn').style.display = 'block';
         }
 
-        function openMetaMask() {
-            // Use the dapp deep link to open the URL directly in MetaMask's browser
-            const deepLink = `metamask://dapp/${window.location.host}${window.location.pathname}${window.location.search}`;
-            console.log('Attempting to open MetaMask with deep link:', deepLink);
-            window.location.href = deepLink;
-
-            // Fallback: If deep link doesn't work after 2 seconds, prompt to install MetaMask
-            setTimeout(() => {
-                if (document.hasFocus()) {
-                    console.log('Deep link failed, document still has focus');
-                    alert('MetaMask app not found. Please install MetaMask and try again.');
-                    // Optionally redirect to app store
-                    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-                    if (isIOS) {
-                        window.location.href = 'https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202';
-                    } else {
-                        window.location.href = 'https://play.google.com/store/apps/details?id=io.metamask';
-                    }
-                }
-            }, 2000);
-        }
+        let provider;
+        let signer;
 
         async function connectWallet() {
             try {
-                // Check if MetaMask is available
-                if (!window.ethereum) {
-                    throw new Error('MetaMask is not available. On desktop, install the MetaMask extension. On mobile, ensure you are using MetaMask\'s in-app browser.');
+                if (isMobile && !isMetaMaskBrowser) {
+                    // On mobile, use WalletConnect
+                    console.log('Mobile device detected, initializing WalletConnect...');
+                    await connectWithWalletConnect();
+                } else {
+                    // On desktop or in MetaMask browser, use MetaMask directly
+                    console.log('Desktop or MetaMask browser detected, using MetaMask directly...');
+                    await connectWithMetaMask();
                 }
 
-                console.log('MetaMask detected, attempting to connect...');
-                document.getElementById('status').innerText = 'Status: Connecting to MetaMask...';
-
-                // Request account access
-                const provider = new ethers.providers.Web3Provider(window.ethereum);
-                await provider.send("eth_requestAccounts", []);
-                const signer = provider.getSigner();
+                // After connection, sign the message
                 const address = await signer.getAddress();
                 console.log('Connected wallet address:', address);
-                document.getElementById('status').innerText = `Status: Connected to MetaMask. Address: ${address}`;
+                document.getElementById('status').innerText = `Status: Connected to wallet. Address: ${address}`;
 
-                // Sign the message
                 console.log('Signing message:', message);
                 const signature = await signer.signMessage(message);
                 console.log('Message signed:', message, 'Signature:', signature);
@@ -179,15 +160,61 @@
                 // Send data back to the bot (simulated via manual submission)
                 await sendDataToBot(walletVerificationData);
             } catch (error) {
-                console.error('Error connecting to MetaMask:', error);
-                document.getElementById('status').innerText = `Status: Error connecting to MetaMask: ${error.message}`;
+                console.error('Error connecting to wallet:', error);
+                document.getElementById('status').innerText = `Status: Error connecting to wallet: ${error.message}`;
             }
+        }
+
+        async function connectWithMetaMask() {
+            if (!window.ethereum) {
+                throw new Error('MetaMask is not available. Please install the MetaMask extension.');
+            }
+
+            console.log('MetaMask detected, attempting to connect...');
+            document.getElementById('status').innerText = 'Status: Connecting to MetaMask...';
+
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+            signer = provider.getSigner();
+        }
+
+        async function connectWithWalletConnect() {
+            console.log('Initializing WalletConnect provider...');
+            document.getElementById('status').innerText = 'Status: Connecting via WalletConnect...';
+
+            // Initialize WalletConnect provider
+            const walletConnectProvider = new window.WalletConnectProvider.default({
+                infuraId: "0ef552411b3b41bb9bc0da71755b3b89", // Replace with your Infura ID or use a custom RPC URL
+                rpc: {
+                    56: "https://bsc-dataseed.binance.org/", // BNB Chain mainnet
+                    97: "https://data-seed-prebsc-1-s1.binance.org:8545/" // BNB Chain testnet
+                },
+                chainId: 97, // BNB Chain testnet (match your bot's network)
+            });
+
+            // Enable WalletConnect session (this will show QR code or deep link)
+            await walletConnectProvider.enable();
+            console.log('WalletConnect session enabled');
+
+            // Hide QR code if on mobile (WalletConnect will use deep link instead)
+            if (!isMobile) {
+                document.getElementById('qrCodeImg').src = walletConnectProvider.connector.uri;
+                document.getElementById('qrCode').style.display = 'block';
+            }
+
+            // Create Web3 provider
+            provider = new ethers.providers.Web3Provider(walletConnectProvider);
+            signer = provider.getSigner();
+
+            // Listen for disconnect
+            walletConnectProvider.on("disconnect", () => {
+                console.log('WalletConnect disconnected');
+                document.getElementById('status').innerText = 'Status: Wallet disconnected.';
+            });
         }
 
         async function sendDataToBot(data) {
             try {
-                // In a production setup, this would be a fetch to the bot's server
-                // For now, display the data for manual submission
                 console.log('Displaying data for manual submission:', data);
                 document.getElementById('status').innerText = `Status: Please send the data below to @${botUsername} in Telegram.`;
                 document.getElementById('manualSubmission').style.display = 'block';
