@@ -100,6 +100,7 @@
       const [isLoading, setIsLoading] = React.useState(false);
       const [action, setAction] = React.useState("connect"); // "connect", "buy"
       const [isMobile, setIsMobile] = React.useState(false);
+      const [isIOS, setIsIOS] = React.useState(false);
       const [walletProvider, setWalletProvider] = React.useState(null); // "metamask", null
 
       // Initialize Telegram Web App and fetch lottery info
@@ -137,10 +138,11 @@
           setStatus("Error: Telegram ID not found. Please open this app via Telegram.");
         }
 
-        // Detect mobile device
+        // Detect mobile device and platform
         const userAgent = navigator.userAgent || navigator.vendor || window.opera;
         setIsMobile(/android|iPhone|iPad|iPod/i.test(userAgent));
-        console.log("Is mobile device:", isMobile);
+        setIsIOS(/iPhone|iPad|iPod/i.test(userAgent));
+        console.log("Is mobile device:", isMobile, "Is iOS:", isIOS);
 
         // Check for MetaMask
         const detectWalletProvider = async () => {
@@ -167,7 +169,9 @@
           } else {
             setWalletProvider(null);
             setStatus(isMobile
-              ? "Please open this app in an external browser to connect with MetaMask."
+              ? (isIOS
+                  ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
+                  : "MetaMask not detected. Please ensure MetaMask is installed and try connecting below.")
               : "Please install MetaMask to connect your wallet.");
             console.log("No MetaMask detected in this environment.");
           }
@@ -322,18 +326,60 @@
       const openInExternalBrowser = () => {
         const currentUrl = window.location.href;
         window.Telegram.WebApp.openLink(currentUrl);
-        setStatus("Please open this app in an external browser to connect with MetaMask.");
+        setStatus(isIOS
+          ? "Please copy the URL and open it in MetaMask's in-app browser to connect. Alternatively, try connecting below."
+          : "Please connect MetaMask in the external browser. If MetaMask doesn't connect, try the button below.");
+      };
+
+      const connectWalletMetaMaskMobile = () => {
+        setIsLoading(true);
+        setStatus("");
+        try {
+          if (!telegramId) {
+            setStatus("Error: Telegram ID not found. Please restart the process in Telegram.");
+            console.error("Telegram ID is missing during mobile wallet connection.");
+            setIsLoading(false);
+            return;
+          }
+
+          // Generate nonce and message for signing
+          const nonce = Math.floor(Math.random() * 900000000) + 100000000;
+          const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
+          
+          // Create a deep link to MetaMask for signing
+          const encodedMessage = encodeURIComponent(message);
+          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
+          
+          // Log the deep link for debugging
+          console.log("Deep link URL:", deepLink);
+
+          // Open MetaMask app
+          window.location.href = deepLink;
+          setStatus(`Opening MetaMask... If this doesn't work, please copy this URL and open it in MetaMask: ${deepLink}`);
+        } catch (error) {
+          setStatus(`Error opening MetaMask: ${error.message}. Please copy the deep link URL from the console and open it in MetaMask.`);
+          console.error("Error opening MetaMask deep link:", error);
+        } finally {
+          setIsLoading(false);
+        }
       };
 
       const connectWalletMetaMask = async () => {
         setIsLoading(true);
         setStatus("");
         try {
-          if (!provider) {
-            setStatus("MetaMask not detected. Please install MetaMask.");
+          if (!window.ethereum) {
+            setStatus(isMobile
+              ? (isIOS
+                  ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
+                  : "MetaMask not detected. Please ensure MetaMask is installed and try again.")
+              : "Please install MetaMask to connect your wallet.");
             setIsLoading(false);
             return;
           }
+
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          setProvider(provider);
 
           const network = await provider.getNetwork();
           const chainId = Number(network.chainId);
@@ -349,6 +395,7 @@
           const signer = await provider.getSigner();
           setAccount(accounts[0]);
           setSigner(signer);
+          setWalletProvider("metamask");
           setStatus("Wallet connected! Verifying ownership...");
           console.log("MetaMask connected, account:", accounts[0]);
 
@@ -469,13 +516,32 @@
                   </p>
                 </div>
               ) : (
-                <p className="text-gray-600">
-                  {walletProvider === "metamask"
-                    ? "Click the button below to connect your MetaMask wallet."
-                    : isMobile
-                      ? "Click the button below to open this app in an external browser and connect with MetaMask."
-                      : "Click the button below to connect with MetaMask in your browser."}
-                </p>
+                <div>
+                  <p className="text-gray-600 mb-2">
+                    {walletProvider === "metamask"
+                      ? "Click the button below to connect your MetaMask wallet."
+                      : isMobile
+                        ? (isIOS
+                            ? "MetaMask not detected in this browser. Please open this app in MetaMask's in-app browser."
+                            : "MetaMask not detected. Please ensure MetaMask is installed and try connecting below.")
+                        : "Click the button below to connect with MetaMask in your browser."}
+                  </p>
+                  {!account && (
+                    <button
+                      onClick={isMobile ? connectWalletMetaMaskMobile : connectWalletMetaMask}
+                      className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                    >
+                      {isMobile ? "Try Connecting MetaMask" : "Connect MetaMask"}
+                    </button>
+                  )}
+                  {isMobile && isIOS && !walletProvider && (
+                    <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+                      <p className="text-gray-700 text-sm">
+                        <strong>iOS Instructions:</strong> Copy the current URL ({window.location.href}), open the MetaMask app, and paste the URL into MetaMask's in-app browser to connect.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
