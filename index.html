@@ -65,12 +65,12 @@
             <h3>Mobile Instructions</h3>
             <p>Follow these steps to connect your MetaMask wallet on mobile:</p>
             <ol>
-                <li><strong>Open MetaMask</strong>: Click the button below to open the MetaMask app. If it doesn't open, ensure MetaMask is installed and try again.</li>
-                <li><strong>Copy the URL</strong>: Copy this page's URL: <code id="pageUrl"></code></li>
-                <li><strong>Open in MetaMask</strong>: In the MetaMask app, open the browser and paste the URL to load this page.</li>
+                <li><strong>Open MetaMask</strong>: Click the button below to open this page in the MetaMask app. If it doesn't open, ensure MetaMask is installed and try again.</li>
                 <li><strong>Connect and Sign</strong>: Once loaded in MetaMask's browser, click "Connect Wallet" again to connect and sign the message.</li>
             </ol>
-            <button onclick="openMetaMask()">Open MetaMask App</button>
+            <button onclick="openMetaMask()">Open in MetaMask App</button>
+            <p>If the button doesn't work, you can manually open MetaMask, go to the browser, and paste this URL:</p>
+            <code id="pageUrl"></code>
         </div>
         <div id="manualSubmission">
             <p>Please copy the following data and send it to your bot in Telegram:</p>
@@ -99,7 +99,7 @@
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         console.log('Is mobile device:', isMobile);
 
-        // Check if the page is loaded in MetaMask's in-app browser
+        // Detect if the page is loaded in MetaMask's in-app browser
         const isMetaMaskBrowser = navigator.userAgent.includes('MetaMask');
         console.log('Is MetaMask browser:', isMetaMaskBrowser);
 
@@ -123,17 +123,23 @@
         }
 
         function openMetaMask() {
-            // Attempt to open MetaMask app via deep link
-            const deepLink = 'metamask://';
+            // Use the dapp deep link to open the URL directly in MetaMask's browser
+            const deepLink = `metamask://dapp/${window.location.host}${window.location.pathname}${window.location.search}`;
             console.log('Attempting to open MetaMask with deep link:', deepLink);
             window.location.href = deepLink;
 
             // Fallback: If deep link doesn't work after 2 seconds, prompt to install MetaMask
             setTimeout(() => {
                 if (document.hasFocus()) {
+                    console.log('Deep link failed, document still has focus');
                     alert('MetaMask app not found. Please install MetaMask and try again.');
                     // Optionally redirect to app store
-                    // window.location.href = 'https://metamask.app.link/';
+                    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                    if (isIOS) {
+                        window.location.href = 'https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202';
+                    } else {
+                        window.location.href = 'https://play.google.com/store/apps/details?id=io.metamask';
+                    }
                 }
             }, 2000);
         }
@@ -145,6 +151,7 @@
                     throw new Error('MetaMask is not available. On desktop, install the MetaMask extension. On mobile, ensure you are using MetaMask\'s in-app browser.');
                 }
 
+                console.log('MetaMask detected, attempting to connect...');
                 document.getElementById('status').innerText = 'Status: Connecting to MetaMask...';
 
                 // Request account access
@@ -156,6 +163,7 @@
                 document.getElementById('status').innerText = `Status: Connected to MetaMask. Address: ${address}`;
 
                 // Sign the message
+                console.log('Signing message:', message);
                 const signature = await signer.signMessage(message);
                 console.log('Message signed:', message, 'Signature:', signature);
 
