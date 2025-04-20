@@ -3,30 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LuckyU Debug</title>
+    <title>LuckyU Wallet Connect</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.3/dist/web3.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background: white;
             padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
         }
         #status {
             margin-top: 20px;
+            color: #333;
+        }
+        #manualSubmission {
+            display: none;
+            margin-top: 20px;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
-    <div>
-        <h1>LuckyU Debug</h1>
-        <p>Debugging WebApp connection...</p>
-        <button onclick="sendTestData()">Send Test Data to Bot</button>
-        <div id="status">Status: Loading...</div>
+    <div class="container">
+        <h1>LuckyU Wallet Connect</h1>
+        <p>Connect your MetaMask wallet to proceed.</p>
+        <button id="connectWalletBtn" onclick="connectWalletMetaMask()">Connect MetaMask Wallet</button>
+        <button id="connectWalletMobileBtn" onclick="connectWalletMetaMaskMobile()" style="display: none;">Connect MetaMask Wallet (Mobile)</button>
+        <div id="status">Status: Waiting for connection...</div>
+        <div id="manualSubmission">
+            <p>Manual submission required. Please copy the following data and send it to your bot:</p>
+            <pre id="manualData"></pre>
+        </div>
     </div>
 
     <script>
+        // Initialize Web3
+        let web3;
+        const EXPECTED_CHAIN_ID = 97; // BNB Chain Testnet
+
+        async function initializeWeb3() {
+            if (typeof window.ethereum !== 'undefined') {
+                web3 = new Web3(window.ethereum);
+                console.log('Web3 initialized with MetaMask provider');
+
+                // Check network
+                try {
+                    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                    const chainIdDecimal = parseInt(chainId, 16);
+                    console.log('Current chain ID:', chainIdDecimal);
+                    if (chainIdDecimal !== EXPECTED_CHAIN_ID) {
+                        document.getElementById('status').innerText = `Status: Please switch MetaMask to BNB Chain Testnet (Chain ID ${EXPECTED_CHAIN_ID}).`;
+                        // Attempt to switch network
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: `0x${EXPECTED_CHAIN_ID.toString(16)}` }],
+                            });
+                            console.log('Switched to BNB Chain Testnet');
+                            document.getElementById('status').innerText = 'Status: Switched to BNB Chain Testnet. Please connect your wallet.';
+                        } catch (switchError) {
+                            console.error('Error switching network:', switchError);
+                            document.getElementById('status').innerText = `Status: Error switching to BNB Chain Testnet: ${switchError.message}`;
+                            return false;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking chain ID:', error);
+                    document.getElementById('status').innerText = `Status: Error checking network: ${error.message}`;
+                    return false;
+                }
+                return true;
+            } else {
+                console.log('MetaMask not detected. Please install MetaMask.');
+                document.getElementById('status').innerText = 'Status: MetaMask not detected. Please install MetaMask.';
+                return false;
+            }
+        }
+
         // Detect if running in Telegram's in-app browser
         const isTelegramWebApp = typeof window.Telegram !== 'undefined' && window.Telegram.WebApp;
         console.log('Running in Telegram WebApp:', isTelegramWebApp);
+
+        // Detect if on mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        console.log('Is mobile device:', isMobile);
+        if (isMobile) {
+            document.getElementById('connectWalletBtn').style.display = 'none';
+            document.getElementById('connectWalletMobileBtn').style.display = 'block';
+        }
 
         // Parse query parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -36,34 +125,112 @@
         const action = urlParams.get('action');
         console.log('Query parameters:', { telegramId, nonce, message, action });
 
-        // Update status
-        document.getElementById('status').innerText = `Status: Running in Telegram WebApp: ${isTelegramWebApp}\nParameters: telegramId=${telegramId}, nonce=${nonce}, action=${action}`;
+        // Validate parameters
+        if (!telegramId || !nonce || !message || !action) {
+            console.error('Missing required query parameters');
+            document.getElementById('status').innerText = 'Status: Error - Missing required query parameters.';
+            return;
+        }
 
-        // Send test data to bot
-        function sendTestData() {
-            const testData = {
-                type: 'test',
-                telegramId: telegramId,
-                message: 'Debug test message'
-            };
-            console.log('Sending test data:', testData);
+        if (action === 'sign') {
+            console.log('Detected sign action from query parameters. Initiating signing...');
+            document.getElementById('status').innerText = `Status: Please connect your wallet to sign the message: "${message}"`;
+        } else {
+            console.error('Unsupported action:', action);
+            document.getElementById('status').innerText = `Status: Error - Unsupported action: ${action}`;
+            return;
+        }
 
+        // Connect to MetaMask (Desktop)
+        async function connectWalletMetaMask() {
             try {
-                if (isTelegramWebApp) {
-                    window.Telegram.WebApp.sendData(JSON.stringify(testData));
-                    console.log('Test data sent to Telegram bot');
-                    document.getElementById('status').innerText = 'Status: Test data sent to bot. You can close this window.';
-                } else {
-                    console.warn('Not in Telegram WebApp. Displaying test data.');
-                    document.getElementById('status').innerText = `Status: Not in Telegram app. Test data: ${JSON.stringify(testData, null, 2)}`;
-                }
+                const initialized = await initializeWeb3();
+                if (!initialized) return;
+
+                // Request account access
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const address = accounts[0];
+                console.log('Connected MetaMask address:', address);
+                document.getElementById('status').innerText = `Status: Connected to MetaMask. Address: ${address}`;
+
+                // Sign the message
+                const signature = await signMessage(address, message);
+                console.log('Message signed:', message, 'Signature:', signature);
+
+                // Prepare data to send back to the bot
+                const walletVerificationData = {
+                    type: 'wallet_verification',
+                    address: address,
+                    signature: signature,
+                    message: message
+                };
+                console.log('Prepared wallet verification data:', walletVerificationData);
+
+                // Send data back to Telegram bot
+                await sendDataToBot(walletVerificationData);
             } catch (error) {
-                console.error('Error sending test data:', error);
-                document.getElementById('status').innerText = `Status: Error sending test data: ${error.message}`;
+                console.error('Error connecting to MetaMask:', error);
+                document.getElementById('status').innerText = `Status: Error connecting to MetaMask: ${error.message}`;
             }
         }
 
-        // Initialize Telegram WebApp
+        // Connect to MetaMask (Mobile)
+        async function connectWalletMetaMaskMobile() {
+            try {
+                if (!window.ethereum) {
+                    // Attempt to open MetaMask app via deep link
+                    const deepLink = `metamask://wc`;
+                    console.log('Attempting to open MetaMask via deep link:', deepLink);
+                    window.location.href = deepLink;
+                    document.getElementById('status').innerText = 'Status: Attempting to open MetaMask app...';
+                    setTimeout(() => {
+                        document.getElementById('status').innerText = 'Status: If MetaMask did not open, please open this link in a browser with MetaMask installed.';
+                    }, 3000);
+                    return;
+                }
+
+                // If MetaMask is available in the browser
+                await connectWalletMetaMask();
+            } catch (error) {
+                console.error('Error connecting to MetaMask on mobile:', error);
+                document.getElementById('status').innerText = `Status: Error connecting to MetaMask on mobile: ${error.message}`;
+            }
+        }
+
+        // Sign the message with MetaMask
+        async function signMessage(address, message) {
+            try {
+                const signature = await window.ethereum.request({
+                    method: 'personal_sign',
+                    params: [message, address]
+                });
+                return signature;
+            } catch (error) {
+                console.error('Error signing message:', error);
+                throw error;
+            }
+        }
+
+        // Send data back to the Telegram bot
+        async function sendDataToBot(data) {
+            try {
+                if (isTelegramWebApp) {
+                    window.Telegram.WebApp.sendData(JSON.stringify(data));
+                    console.log('Sent wallet verification data to Telegram bot:', data);
+                    document.getElementById('status').innerText = 'Status: Data sent to bot. You can close this window.';
+                } else {
+                    console.warn('Not running in Telegram WebApp. Displaying data for manual submission.');
+                    document.getElementById('status').innerText = 'Status: Not in Telegram app. Please copy the data below and send it to your bot.';
+                    document.getElementById('manualSubmission').style.display = 'block';
+                    document.getElementById('manualData').innerText = JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                console.error('Error sending data to bot:', error);
+                document.getElementById('status').innerText = `Status: Error sending data to bot: ${error.message}`;
+            }
+        }
+
+        // Initialize Telegram WebApp (if available)
         if (isTelegramWebApp) {
             window.Telegram.WebApp.ready();
             console.log('Telegram WebApp initialized');
