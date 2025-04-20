@@ -1,742 +1,101 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LuckyU - Wallet & Lottery Dashboard</title>
-  <!-- Load scripts -->
-  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js" crossorigin></script>
-  <script src="https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js" crossorigin></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    .fallback-message {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      text-align: center;
-      padding: 20px;
-      background: linear-gradient(to bottom, #8b5cf6, #ec4899);
-      color: white;
-    }
-    .fallback-message h1 {
-      font-size: 24px;
-      margin-bottom: 10px;
-    }
-    .fallback-message p {
-      font-size: 16px;
-      margin-bottom: 20px;
-    }
-    .fallback-message button {
-      padding: 10px 20px;
-      background-color: white;
-      color: #8b5cf6;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LuckyU Wallet Connect</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f2f5; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { background: #5865F2; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        .error { color: #ff4444; margin-top: 10px; }
+    </style>
 </head>
 <body>
-  <div id="root"></div>
-  <div id="fallback" class="fallback-message" style="display: none;">
-    <h1>⚠️ Something Went Wrong</h1>
-    <p>Unable to load the LuckyU app. Please try refreshing the page or check the console for errors.</p>
-    <button onclick="window.location.reload()">Refresh</button>
-  </div>
-
-  <script type="text/babel">
-    // Check if dependencies are loaded
-    if (!window.React || !window.ReactDOM || !window.Babel || !window.ethers) {
-      console.error("Failed to load one or more dependencies:", {
-        React: !!window.React,
-        ReactDOM: !!window.ReactDOM,
-        Babel: !!window.Babel,
-        ethers: !!window.ethers,
-        Telegram: !!window.Telegram,
-      });
-      document.getElementById("root").style.display = "none";
-      document.getElementById("fallback").style.display = "flex";
-      throw new Error("Required dependencies not loaded.");
-    }
-
-    const { ethers } = window;
-
-    // Contract addresses (replace with actual addresses)
-    const LUCK_TOKEN_ADDRESS = "0x7c1209fb8f73e37b43f25da2dd81a00565f90607"; // Replace with your $LUCK token address
-    const LOTTERY_CONTRACT_ADDRESS = "0x58E319BB163A6952A3cfF5d08F9f08112566Da90"; // Replace with your lottery contract address
-    const EXPECTED_CHAIN_ID = 97; // BNB Chain testnet (use 56 for mainnet)
-
-    // Simplified ABI for the contracts (replace with actual ABIs if needed)
-    const LUCK_TOKEN_ABI = [
-      "function approve(address spender, uint256 amount) public returns (bool)",
-      "function allowance(address owner, address spender) public view returns (uint256)",
-      "function balanceOf(address account) public view returns (uint256)",
-      "function decimals() public view returns (uint8)"
-    ];
-    const LOTTERY_CONTRACT_ABI = [
-      "function enterLottery(uint256 numberOfTickets) public",
-      "function ticketPrice() public view returns (uint256)",
-      "function currentLotteryId() public view returns (uint256)",
-      "function getLotteryInfo(uint256 lotteryId) public view returns (uint256 startTime, uint256 endTime, uint256 resultTime, bool ended, uint256 participantCount, uint256 prizePool)"
-    ];
-
-    function App() {
-      const [telegramId, setTelegramId] = React.useState("");
-      const [account, setAccount] = React.useState(null);
-      const [provider, setProvider] = React.useState(null);
-      const [signer, setSigner] = React.useState(null);
-      const [lotteryContract, setLotteryContract] = React.useState(null);
-      const [luckToken, setLuckToken] = React.useState(null);
-      const [lotteryInfo, setLotteryInfo] = React.useState(null);
-      const [ticketPrice, setTicketPrice] = React.useState(0);
-      const [ticketAmount, setTicketAmount] = React.useState(1);
-      const [status, setStatus] = React.useState("");
-      const [isLoading, setIsLoading] = React.useState(false);
-      const [action, setAction] = React.useState("connect"); // "connect", "buy"
-      const [isMobile, setIsMobile] = React.useState(false);
-      const [isIOS, setIsIOS] = React.useState(false);
-      const [walletProvider, setWalletProvider] = React.useState(null); // "metamask", null
-      const [manualVerificationData, setManualVerificationData] = React.useState(null);
-
-      // Initialize Telegram Web App and fetch lottery info
-      React.useEffect(() => {
-        console.log("Initializing LuckyU app...");
-
-        // Get query parameters
-        const params = new URLSearchParams(window.location.search);
-        const telegramIdFromQuery = params.get("telegramId");
-        const actionFromQuery = params.get("action");
-        const messageFromQuery = params.get("message");
-        const nonceFromQuery = params.get("nonce");
-
-        console.log("Current URL:", window.location.href);
-        console.log("Query parameters:", {
-          telegramId: telegramIdFromQuery,
-          action: actionFromQuery,
-          message: messageFromQuery,
-          nonce: nonceFromQuery
-        });
-
-        // Telegram Web App setup
-        if (window.Telegram && window.Telegram.WebApp) {
-          console.log("Telegram Web App detected.");
-          window.Telegram.WebApp.ready(); // Initialize the Web App
-          const user = window.Telegram.WebApp.initDataUnsafe.user;
-          if (user) {
-            setTelegramId(user.id.toString());
-            console.log("Telegram user ID set from Telegram SDK:", user.id);
-          } else if (telegramIdFromQuery) {
-            setTelegramId(telegramIdFromQuery);
-            console.log("Telegram user ID set from query parameter:", telegramIdFromQuery);
-          }
-
-          // Initialize MainButton
-          window.Telegram.WebApp.MainButton.setText("Connect Wallet");
-          window.Telegram.WebApp.MainButton.show();
-        } else if (telegramIdFromQuery) {
-          setTelegramId(telegramIdFromQuery);
-          console.log("Telegram Web App SDK not available, using telegramId from query:", telegramIdFromQuery);
-        } else {
-          console.warn("Not running in Telegram Web App environment, and no telegramId provided.");
-          setStatus("Error: Telegram ID not found. Please return to Telegram, restart the process with /set_wallet, and ensure the URL includes the telegramId query parameter.");
-        }
-
-        // Detect mobile device and platform
-        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-        setIsMobile(/android|iPhone|iPad|iPod/i.test(userAgent));
-        setIsIOS(/iPhone|iPad|iPod/i.test(userAgent));
-        console.log("Is mobile device:", isMobile, "Is iOS:", isIOS);
-
-        // Check for MetaMask
-        const detectWalletProvider = async () => {
-          if (window.ethereum) {
-            console.log("MetaMask detected.");
-            setWalletProvider("metamask");
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            setProvider(provider);
-
-            // Check network
-            const network = await provider.getNetwork();
-            const chainId = Number(network.chainId);
-            console.log("Connected to chain ID:", chainId);
-            if (chainId !== EXPECTED_CHAIN_ID) {
-              setStatus(`Please switch MetaMask to the correct network (chain ID ${EXPECTED_CHAIN_ID}).`);
-              console.error("Network mismatch. Expected chain ID:", EXPECTED_CHAIN_ID, "Got:", chainId);
-              return;
-            }
-
-            const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-            const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-            setLuckToken(luckToken);
-            setLotteryContract(lotteryContract);
-          } else {
-            setWalletProvider(null);
-            setStatus(isMobile
-              ? (isIOS
-                  ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
-                  : "MetaMask not detected. Please ensure MetaMask is installed and try connecting below.")
-              : "Please install MetaMask to connect your wallet.");
-            console.log("No MetaMask detected in this environment.");
-          }
-        };
-
-        // Initial detection
-        detectWalletProvider();
-
-        // Re-check for wallet provider after a short delay (in case MetaMask loads asynchronously)
-        const recheckInterval = setInterval(() => {
-          if (!walletProvider && window.ethereum) {
-            console.log("Wallet provider detected after delay.");
-            detectWalletProvider();
-            clearInterval(recheckInterval);
-          }
-        }, 1000);
-
-        // Automatically initiate signing if action=sign
-        if (actionFromQuery === "sign" && messageFromQuery && telegramIdFromQuery && nonceFromQuery && window.ethereum) {
-          console.log("Detected sign action from query parameters. Initiating signing...");
-          setIsLoading(true);
-          setStatus("Connecting wallet and signing message...");
-          const connectAndSign = async () => {
-            try {
-              const provider = new ethers.BrowserProvider(window.ethereum);
-              setProvider(provider);
-
-              // Check network
-              const network = await provider.getNetwork();
-              const chainId = Number(network.chainId);
-              if (chainId !== EXPECTED_CHAIN_ID) {
-                setStatus(`Please switch MetaMask to the correct network (chain ID ${EXPECTED_CHAIN_ID}).`);
-                console.error("Network mismatch during signing. Expected chain ID:", EXPECTED_CHAIN_ID, "Got:", chainId);
-                return;
-              }
-
-              const accounts = await provider.send("eth_requestAccounts", []);
-              const signer = await provider.getSigner();
-              setAccount(accounts[0]);
-              setSigner(signer);
-              setWalletProvider("metamask");
-
-              const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-              const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-              setLuckToken(luckToken);
-              setLotteryContract(lotteryContract);
-
-              const message = decodeURIComponent(messageFromQuery);
-              console.log("Signing message for action=sign:", message);
-              const signature = await signer.signMessage(message);
-              console.log("Message signed:", message, "Signature:", signature);
-
-              // Send wallet address and signature to bot
-              const verificationData = {
-                type: "wallet_verification",
-                address: accounts[0],
-                signature,
-                message
-              };
-              try {
-                window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
-                console.log("Sent wallet verification data to Telegram bot:", verificationData);
-                setStatus("Wallet verification submitted! Please return to Telegram to continue.");
-              } catch (sendError) {
-                console.error("Error sending data to Telegram bot:", sendError);
-                setManualVerificationData(verificationData);
-                setStatus("Wallet verification completed, but could not send to Telegram bot. Please manually submit the data below to the bot.");
-              }
-              setAction("buy");
-            } catch (error) {
-              setStatus(`Error signing message: ${error.message}`);
-              console.error("Error signing message:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          };
-          connectAndSign();
-        }
-
-        // Fetch lottery info if provider is set
-        const fetchLotteryInfo = async () => {
-          if (!lotteryContract) {
-            console.warn("Lottery contract not initialized yet.");
-            return;
-          }
-          try {
-            console.log("Fetching lottery info...");
-            const currentId = await lotteryContract.currentLotteryId();
-            if (currentId > 0) {
-              const [startTime, endTime, resultTime, ended, participantCount, prizePool] = await lotteryContract.getLotteryInfo(currentId);
-              setLotteryInfo({
-                id: currentId,
-                startTime: new Date(startTime * 1000).toUTCString(),
-                endTime: new Date(endTime * 1000).toUTCString(),
-                resultTime: new Date(resultTime * 1000).toUTCString(),
-                ended,
-                participantCount,
-                prizePool: ethers.formatEther(prizePool)
-              });
-              const ticketPrice = await lotteryContract.ticketPrice();
-              setTicketPrice(ethers.formatEther(ticketPrice));
-              console.log("Lottery info fetched:", {
-                id: currentId,
-                prizePool: ethers.formatEther(prizePool),
-                ticketPrice: ethers.formatEther(ticketPrice)
-              });
-            } else {
-              setLotteryInfo({ id: 0 });
-              console.log("No active lottery found.");
-            }
-          } catch (error) {
-            setStatus(`Error fetching lottery info: ${error.message}. Please ensure the contract address (${LOTTERY_CONTRACT_ADDRESS}) is correct and deployed on chain ID ${EXPECTED_CHAIN_ID}.`);
-            console.error("Error fetching lottery info:", error);
-          }
-        };
-        fetchLotteryInfo();
-
-        // Pre-fill ticket amount from query params (if coming from /buy_tickets)
-        const tickets = params.get("tickets");
-        if (tickets) {
-          setTicketAmount(Math.max(1, parseInt(tickets) || 1));
-          setAction("buy");
-          console.log("Pre-filled ticket amount:", tickets);
-        }
-
-        // Clean up on unmount
-        return () => {
-          clearInterval(recheckInterval);
-          if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.MainButton.offClick();
-          }
-        };
-      }, [lotteryContract]);
-
-      // Update MainButton based on state
-      React.useEffect(() => {
-        if (!window.Telegram || !window.Telegram.WebApp.MainButton) return;
-
-        if (isLoading) {
-          window.Telegram.WebApp.MainButton.setText("Processing...");
-          window.Telegram.WebApp.MainButton.disable();
-          return;
-        }
-
-        window.Telegram.WebApp.MainButton.enable();
-        if (!walletProvider && !account) {
-          window.Telegram.WebApp.MainButton.setText(isMobile ? "Connect with MetaMask (Open in Browser)" : "Connect with MetaMask");
-          window.Telegram.WebApp.MainButton.onClick(isMobile ? openInExternalBrowser : connectWalletMetaMask);
-        } else if (action === "connect" && !account) {
-          window.Telegram.WebApp.MainButton.setText("Connect Wallet");
-          window.Telegram.WebApp.MainButton.onClick(connectWalletMetaMask);
-        } else if (action === "buy") {
-          window.Telegram.WebApp.MainButton.setText(`Buy ${ticketAmount} Ticket${ticketAmount > 1 ? 's' : ''}`);
-          window.Telegram.WebApp.MainButton.onClick(buyTickets);
-        } else {
-          window.Telegram.WebApp.MainButton.setText("Buy Tickets");
-          window.Telegram.WebApp.MainButton.onClick(() => setAction("buy"));
-        }
-      }, [walletProvider, isMobile, account, action, ticketAmount, isLoading]);
-
-      const openInExternalBrowser = () => {
-        // Ensure query parameters are preserved
-        const params = new URLSearchParams(window.location.search);
-        const telegramIdFromQuery = params.get("telegramId");
-        const actionFromQuery = params.get("action");
-        const messageFromQuery = params.get("message");
-        const nonceFromQuery = params.get("nonce");
-
-        let url = `${window.location.host}${window.location.pathname}`;
-        const queryParams = [];
-        if (telegramIdFromQuery) queryParams.push(`telegramId=${telegramIdFromQuery}`);
-        if (actionFromQuery) queryParams.push(`action=${actionFromQuery}`);
-        if (messageFromQuery) queryParams.push(`message=${messageFromQuery}`);
-        if (nonceFromQuery) queryParams.push(`nonce=${nonceFromQuery}`);
-        if (queryParams.length > 0) {
-          url = `https://${url}?${queryParams.join('&')}`;
-        } else {
-          url = `https://${url}`;
-        }
-
-        console.log("Opening external browser with URL:", url);
-        window.Telegram.WebApp.openLink(url);
-        setStatus(isIOS
-          ? "Please copy the URL and open it in MetaMask's in-app browser to connect. Alternatively, try connecting below."
-          : "Please connect MetaMask in the external browser. If MetaMask doesn't connect, try the button below.");
-      };
-
-      const connectWalletMetaMaskMobile = () => {
-        setIsLoading(true);
-        setStatus("");
-        try {
-          if (!telegramId) {
-            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process with /set_wallet.");
-            console.error("Telegram ID is missing during mobile wallet connection.");
-            setIsLoading(false);
-            return;
-          }
-
-          // Generate nonce and message for signing
-          const nonce = Math.floor(Math.random() * 900000000) + 100000000;
-          const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
-          
-          // Create a deep link to MetaMask for signing
-          const encodedMessage = encodeURIComponent(message);
-          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}\\/`;
-          
-          // Log the deep link for debugging
-          console.log("Deep link URL:", deepLink);
-
-          // Attempt to open MetaMask with a timeout
-          setStatus(`Opening MetaMask... If this doesn't work, please copy this URL and open it in MetaMask: ${deepLink}`);
-          
-          const startTime = Date.now();
-          const timeout = 3000; // 3 seconds timeout
-          const interval = setInterval(() => {
-            if (Date.now() - startTime > timeout) {
-              clearInterval(interval);
-              if (!account) {
-                setStatus(`Failed to open MetaMask. Please copy this URL and open it in MetaMask: ${deepLink}`);
-              }
-            }
-          }, 500);
-
-          return deepLink; // Return the deepLink for the <a> tag
-        } catch (error) {
-          setStatus(`Error opening MetaMask: ${error.message}. Please copy the deep link URL from the console and open it in MetaMask.`);
-          console.error("Error opening MetaMask deep link:", error);
-          setIsLoading(false);
-          return null;
-        }
-      };
-
-      const connectWalletMetaMask = async () => {
-        setIsLoading(true);
-        setStatus("");
-        try {
-          if (!window.ethereum) {
-            setStatus(isMobile
-              ? (isIOS
-                  ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
-                  : "MetaMask not detected. Please ensure MetaMask is installed and try again.")
-              : "Please install MetaMask to connect your wallet.");
-            setIsLoading(false);
-            return;
-          }
-
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          setProvider(provider);
-
-          const network = await provider.getNetwork();
-          const chainId = Number(network.chainId);
-          console.log("MetaMask connected to chain ID:", chainId);
-          if (chainId !== EXPECTED_CHAIN_ID) {
-            setStatus(`Please switch MetaMask to the correct network (chain ID ${EXPECTED_CHAIN_ID}).`);
-            console.error("Network mismatch. Expected chain ID:", EXPECTED_CHAIN_ID, "Got:", chainId);
-            setIsLoading(false);
-            return;
-          }
-
-          const accounts = await provider.send("eth_requestAccounts", []);
-          const signer = await provider.getSigner();
-          setAccount(accounts[0]);
-          setSigner(signer);
-          setWalletProvider("metamask");
-          setStatus("Wallet connected! Verifying ownership...");
-          console.log("MetaMask connected, account:", accounts[0]);
-
-          // Generate nonce and sign message
-          if (!telegramId) {
-            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process with /set_wallet.");
-            console.error("Telegram ID is missing during wallet verification.");
-            setIsLoading(false);
-            return;
-          }
-
-          const nonce = Math.floor(Math.random() * 900000000) + 100000000;
-          const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
-          console.log("Telegram ID:", telegramId, "Message to sign:", message);
-
-          let signature;
-          try {
-            signature = await signer.signMessage(message);
-            console.log("Message signed:", message, "Signature:", signature);
-          } catch (signError) {
-            setStatus(`Error signing message: ${signError.message}. Please try again.`);
-            console.error("Error signing message:", signError);
-            setIsLoading(false);
-            return;
-          }
-
-          // Send wallet address and signature to bot
-          const verificationData = {
-            type: "wallet_verification",
-            address: accounts[0],
-            signature,
-            message
-          };
-          try {
-            window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
-            console.log("Sent wallet verification data to Telegram bot:", verificationData);
-            setStatus("Wallet verification submitted! Please return to Telegram to continue.");
-            window.Telegram.WebApp.close(); // Close the Web App as in the example
-          } catch (sendError) {
-            console.error("Error sending data to Telegram bot:", sendError);
-            setManualVerificationData(verificationData);
-            setStatus("Wallet verification completed, but could not send to Telegram bot. Please manually submit the data below to the bot.");
-          }
-          setAction("buy"); // Switch to buy mode after connecting
-        } catch (error) {
-          setStatus(`Error connecting wallet: ${error.message}`);
-          console.error("Error connecting MetaMask:", error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      const approveTokens = async (amount) => {
-        setIsLoading(true);
-        setStatus("");
-        try {
-          if (!signer || !luckToken) {
-            setStatus("Please connect your wallet first.");
-            setIsLoading(false);
-            return;
-          }
-
-          const amountBigInt = ethers.parseEther(amount.toString());
-          const tx = await luckToken.connect(signer).approve(LOTTERY_CONTRACT_ADDRESS, amountBigInt);
-          await tx.wait();
-          setStatus("Approval successful! Proceeding to buy tickets...");
-          console.log("Token approval successful.");
-        } catch (error) {
-          setStatus(`Error approving tokens: ${error.message}`);
-          console.error("Error approving tokens:", error);
-          throw error;
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      const buyTickets = async () => {
-        setIsLoading(true);
-        setStatus("");
-        try {
-          if (!signer || !lotteryContract || !luckToken) {
-            setStatus("Please connect your wallet first.");
-            setIsLoading(false);
-            return;
-          }
-
-          if (!lotteryInfo || lotteryInfo.id === 0) {
-            setStatus("No active lottery available.");
-            setIsLoading(false);
-            return;
-          }
-
-          if (lotteryInfo.ended || new Date(lotteryInfo.endTime) < new Date()) {
-            setStatus("This lottery has ended. Please wait for the next one.");
-            setIsLoading(false);
-            return;
-          }
-
-          const totalCost = ticketPrice * ticketAmount;
-          const balance = await luckToken.balanceOf(account);
-          if (ethers.formatEther(balance) < totalCost) {
-            setStatus(`Insufficient $LUCK balance. You need ${totalCost} $LUCK.`);
-            setIsLoading(false);
-            return;
-          }
-
-          const allowance = await luckToken.allowance(account, LOTTERY_CONTRACT_ADDRESS);
-          if (ethers.formatEther(allowance) < totalCost) {
-            setStatus(`Insufficient allowance. Approving ${totalCost} $LUCK...`);
-            await approveTokens(totalCost);
-          }
-
-          const tx = await lotteryContract.connect(signer).enterLottery(ticketAmount);
-          await tx.wait();
-          setStatus(`Successfully bought ${ticketAmount} ticket(s)!`);
-          console.log(`Bought ${ticketAmount} ticket(s) successfully.`);
-
-          // Send confirmation to bot
-          const purchaseData = {
-            type: "purchased",
-            tickets: ticketAmount
-          };
-          try {
-            window.Telegram.WebApp.sendData(JSON.stringify(purchaseData));
-            console.log("Sent ticket purchase confirmation to Telegram bot:", purchaseData);
-            setStatus(`Successfully bought ${ticketAmount} ticket(s)! Confirmation sent to bot.`);
-            window.Telegram.WebApp.close(); // Close the Web App as in the example
-          } catch (sendError) {
-            console.error("Error sending ticket purchase data to Telegram bot:", sendError);
-            setStatus(`Successfully bought ${ticketAmount} ticket(s), but could not send confirmation to Telegram bot: ${sendError.message}. Please notify the bot manually with: Tickets Purchased=${ticketAmount}`);
-          }
-        } catch (error) {
-          setStatus(`Error buying tickets: ${error.message}`);
-          console.error("Error buying tickets:", error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      const deepLink = isMobile && !account && connectWalletMetaMaskMobile();
-
-      return (
-        <div className="min-h-screen bg-gradient-to-b from-purple-500 to-pink-500 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
-            <div className="flex items-center justify-center mb-4">
-              <h1 className="text-3xl font-bold text-purple-600">LuckyU 🦙</h1>
-            </div>
-
-            {/* Wallet Section */}
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Wallet</h2>
-              {account ? (
-                <div className="bg-green-100 p-3 rounded-lg">
-                  <p className="text-green-800 font-medium">
-                    Connected: {account.slice(0, 6)}...{account.slice(-4)}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-gray-600 mb-2">
-                    {walletProvider === "metamask"
-                      ? "Click the button below to connect your MetaMask wallet."
-                      : isMobile
-                        ? (isIOS
-                            ? "MetaMask not detected in this browser. Please open this app in MetaMask's in-app browser."
-                            : "MetaMask not detected. Please ensure MetaMask is installed and try connecting below.")
-                        : "Click the button below to connect with MetaMask in your browser."}
-                  </p>
-                  {!account && (
-                    <div className="space-y-2">
-                      <button
-                        onClick={isMobile ? connectWalletMetaMaskMobile : connectWalletMetaMask}
-                        className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-                      >
-                        {isMobile ? "Try Connecting MetaMask" : "Connect MetaMask"}
-                      </button>
-                      {isMobile && deepLink && (
-                        <a
-                          href={deepLink}
-                          className="block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-center"
-                        >
-                          Open in MetaMask
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {isMobile && isIOS && !walletProvider && (
-                    <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-                      <p className="text-gray-700 text-sm">
-                        <strong>iOS Instructions:</strong> Copy the current URL ({window.location.href}), open the MetaMask app, and paste the URL into MetaMask's in-app browser to connect.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-              {manualVerificationData && (
-                <div className="mt-4 p-3 bg-yellow-100 rounded-lg">
-                  <p className="text-yellow-800 text-sm">
-                    <strong>Manual Submission Required:</strong> Please send the following data to the Telegram bot:<br/>
-                    Type: {manualVerificationData.type}<br/>
-                    Address: {manualVerificationData.address}<br/>
-                    Signature: {manualVerificationData.signature}<br/>
-                    Message: {manualVerificationData.message}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Lottery Info Section */}
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Current Lottery</h2>
-              {lotteryInfo && lotteryInfo.id > 0 ? (
-                <div className="bg-gray-100 p-4 rounded-lg">
-                  <p className="text-gray-700">Lottery ID: #{lotteryInfo.id}</p>
-                  <p className="text-gray-700">Prize Pool: {lotteryInfo.prizePool} $LUCK</p>
-                  <p className="text-gray-700">Participants: {lotteryInfo.participantCount}</p>
-                  <p className="text-gray-700">Ends: {lotteryInfo.endTime}</p>
-                  <p className="text-gray-700">Ticket Price: {ticketPrice} $LUCK</p>
-                </div>
-              ) : (
-                <p className="text-gray-600">No active lottery yet. Stay tuned! 🦙</p>
-              )}
-            </div>
-
-            {/* Buy Tickets Section */}
-            {lotteryInfo && lotteryInfo.id > 0 && action === "buy" && (
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Buy Tickets 🎟️</h2>
-                <div className="flex items-center space-x-4 mb-4">
-                  <input
-                    type="number"
-                    min="1"
-                    value={ticketAmount}
-                    onChange={(e) => setTicketAmount(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-20 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                  <p className="text-gray-600">
-                    Total: {(ticketPrice * ticketAmount).toFixed(2)} $LUCK
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Status Messages */}
-            {status && (
-              <div className={`p-3 rounded-lg text-sm ${
-                status.includes('Error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-              }`}>
-                {status}
-              </div>
-            )}
-          </div>
+    <div class="container">
+        <div class="card">
+            <h1>🦙 Connect Your Wallet</h1>
+            <div id="status">Initializing...</div>
+            <button onclick="connectWallet()" id="connectButton">Connect MetaMask</button>
+            <div id="error" class="error"></div>
         </div>
-      );
-    }
+    </div>
 
-    // Error boundary component to catch rendering errors
-    class ErrorBoundary extends React.Component {
-      state = { hasError: false };
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        let telegramId = params.get('telegramId');
+        let nonce = params.get('nonce');
+        let action = params.get('action');
+        let message = params.get('message');
 
-      static getDerivedStateFromError(error) {
-        return { hasError: true };
-      }
+        async function connectWallet() {
+            try {
+                if (!window.ethereum) {
+                    showError('MetaMask not detected!');
+                    return;
+                }
 
-      componentDidCatch(error, errorInfo) {
-        console.error("Error rendering React app:", error, errorInfo);
-        document.getElementById("root").style.display = "none";
-        document.getElementById("fallback").style.display = "flex";
-      }
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
 
-      render() {
-        if (this.state.hasError) {
-          return null; // Fallback UI is handled by the DOM
+                // Verify network
+                const network = await provider.getNetwork();
+                if (network.chainId !== 97n) { // BSC Testnet
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x61' }] 
+                    });
+                }
+
+                // Sign verification message
+                const verificationMessage = decodeURIComponent(message) || 
+                    `LuckyU Verification - Telegram ID: ${telegramId} - Nonce: ${nonce}`;
+                
+                const signature = await signer.signMessage(verificationMessage);
+
+                // Send data back to Telegram bot
+                const verificationData = {
+                    type: "verification",
+                    address: address,
+                    signature: signature,
+                    message: verificationMessage
+                };
+
+                if (window.Telegram.WebApp) {
+                    window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
+                    window.Telegram.WebApp.close();
+                } else {
+                    showError('Telegram context missing - please return to Telegram');
+                }
+            } catch (error) {
+                showError(`Connection failed: ${error.message}`);
+            }
         }
-        return this.props.children;
-      }
-    }
 
-    // Render the app with error boundary
-    try {
-      ReactDOM.render(
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>,
-        document.getElementById('root')
-      );
-      console.log("React app rendered successfully.");
-    } catch (error) {
-      console.error("Failed to render React app:", error);
-      document.getElementById("root").style.display = "none";
-      document.getElementById("fallback").style.display = "flex";
-    }
-  </script>
+        function showError(message) {
+            document.getElementById('error').textContent = message;
+        }
+
+        // Initialize based on URL parameters
+        function init() {
+            if (action === 'verify' && telegramId && nonce) {
+                document.getElementById('status').textContent = 'Ready to verify wallet...';
+            } else {
+                showError('Invalid verification parameters');
+                document.getElementById('connectButton').disabled = true;
+            }
+        }
+
+        // Handle mobile MetaMask launch
+        if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+            window.location.href = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?${window.location.search}`;
+        } else {
+            init();
+        }
+    </script>
 </body>
 </html>
