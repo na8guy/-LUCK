@@ -1,101 +1,117 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LuckyU Wallet Connect</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f2f5; }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        button { background: #5865F2; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-        .error { color: #ff4444; margin-top: 10px; }
-    </style>
+    <!-- ... keep existing head content ... -->
 </head>
 <body>
     <div class="container">
         <div class="card">
             <h1>🦙 Connect Your Wallet</h1>
             <div id="status">Initializing...</div>
-            <button onclick="connectWallet()" id="connectButton">Connect MetaMask</button>
+            <div id="metaMaskSection" style="display: none;">
+                <button onclick="connectWallet()" id="connectButton">Connect MetaMask</button>
+            </div>
+            <div id="mobileHelp" style="display: none; margin-top: 15px;">
+                <p>📱 Mobile Tips:</p>
+                <ol>
+                    <li>Open in MetaMask browser</li>
+                    <li>Enable "Web3 Provider" in settings</li>
+                    <li>Refresh the page</li>
+                </ol>
+            </div>
             <div id="error" class="error"></div>
         </div>
     </div>
 
     <script>
-        const params = new URLSearchParams(window.location.search);
-        let telegramId = params.get('telegramId');
-        let nonce = params.get('nonce');
-        let action = params.get('action');
-        let message = params.get('message');
+        // Improved MetaMask detection logic
+        async function checkMetaMask() {
+            // Check multiple ways MetaMask might be injected
+            const provider = window.ethereum || window.web3?.currentProvider;
+            
+            if (provider && provider.isMetaMask) {
+                return true;
+            }
+            
+            // Check if recently installed and needs page reload
+            if (window.ethereum) {
+                window.location.reload();
+                return true;
+            }
+            
+            return false;
+        }
+
+        async function init() {
+            const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+            const hasMetaMask = await checkMetaMask();
+
+            if (!hasMetaMask) {
+                document.getElementById('status').textContent = 'MetaMask Not Found';
+                document.getElementById('error').textContent = isMobile ?
+                    'Try opening in MetaMask browser (click ⋯ > Open in MetaMask)' :
+                    'Install MetaMask or check browser extensions';
+                
+                if (isMobile) {
+                    document.getElementById('mobileHelp').style.display = 'block';
+                    // Improved mobile deep link
+                    window.location.href = `https://metamask.app.link/dapp/${encodeURIComponent(window.location.href)}`;
+                }
+                return;
+            }
+
+            // Show connection UI if MetaMask found
+            document.getElementById('status').textContent = 'MetaMask Detected!';
+            document.getElementById('metaMaskSection').style.display = 'block';
+            
+            // Additional check for multiple wallets
+            if (window.ethereum.providers?.length > 1) {
+                document.getElementById('error').textContent = 
+                    'Multiple wallets detected - please select MetaMask';
+            }
+        }
 
         async function connectWallet() {
             try {
-                if (!window.ethereum) {
-                    showError('MetaMask not detected!');
-                    return;
-                }
-
-                const provider = new ethers.BrowserProvider(window.ethereum);
-                const signer = await provider.getSigner();
-                const address = await signer.getAddress();
-
-                // Verify network
-                const network = await provider.getNetwork();
-                if (network.chainId !== 97n) { // BSC Testnet
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x61' }] 
-                    });
-                }
-
-                // Sign verification message
-                const verificationMessage = decodeURIComponent(message) || 
-                    `LuckyU Verification - Telegram ID: ${telegramId} - Nonce: ${nonce}`;
+                // Explicitly request MetaMask even with multiple providers
+                const provider = window.ethereum.providers?.find(p => p.isMetaMask) || window.ethereum;
                 
-                const signature = await signer.signMessage(verificationMessage);
-
-                // Send data back to Telegram bot
-                const verificationData = {
-                    type: "verification",
-                    address: address,
-                    signature: signature,
-                    message: verificationMessage
-                };
-
-                if (window.Telegram.WebApp) {
-                    window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
-                    window.Telegram.WebApp.close();
-                } else {
-                    showError('Telegram context missing - please return to Telegram');
-                }
+                // Force MetaMask to connect
+                await provider.request({ method: 'eth_requestAccounts' });
+                
+                // Rest of connection logic...
+                
             } catch (error) {
                 showError(`Connection failed: ${error.message}`);
             }
         }
 
-        function showError(message) {
-            document.getElementById('error').textContent = message;
-        }
-
-        // Initialize based on URL parameters
-        function init() {
-            if (action === 'verify' && telegramId && nonce) {
-                document.getElementById('status').textContent = 'Ready to verify wallet...';
-            } else {
-                showError('Invalid verification parameters');
-                document.getElementById('connectButton').disabled = true;
-            }
-        }
-
-        // Handle mobile MetaMask launch
+        // Enhanced mobile handling
         if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-            window.location.href = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?${window.location.search}`;
-        } else {
-            init();
+            // Add delay for mobile deep links
+            setTimeout(() => {
+                if (!window.ethereum) {
+                    window.location.href = `https://metamask.app.link/dapp/${encodeURIComponent(window.location.href)}`;
+                }
+            }, 1500);
         }
+
+        // Start initialization
+        init();
+
+        // Listen for provider changes
+        window.addEventListener('ethereum#initialized', handleMetaMask, {
+            once: true,
+            passive: true
+        });
+
+        // Polling fallback
+        let checkCount = 0;
+        const interval = setInterval(() => {
+            if (checkMetaMask() || checkCount++ > 10) {
+                clearInterval(interval);
+            }
+        }, 100);
     </script>
 </body>
 </html>
