@@ -108,6 +108,14 @@
       // Initialize Telegram Web App and fetch lottery info
       React.useEffect(() => {
         console.log("Initializing LuckyU app...");
+
+        // Get query parameters
+        const params = new URLSearchParams(window.location.search);
+        const telegramIdFromQuery = params.get("telegramId");
+        const actionFromQuery = params.get("action");
+        const messageFromQuery = params.get("message");
+        const nonceFromQuery = params.get("nonce");
+
         // Telegram Web App setup
         if (window.Telegram && window.Telegram.WebApp) {
           console.log("Telegram Web App detected.");
@@ -115,14 +123,21 @@
           const user = window.Telegram.WebApp.initDataUnsafe.user;
           if (user) {
             setTelegramId(user.id.toString());
-            console.log("Telegram user ID set:", user.id);
+            console.log("Telegram user ID set from Telegram SDK:", user.id);
+          } else if (telegramIdFromQuery) {
+            setTelegramId(telegramIdFromQuery);
+            console.log("Telegram user ID set from query parameter:", telegramIdFromQuery);
           }
 
           // Initialize MainButton
           window.Telegram.WebApp.MainButton.setText("Connect Wallet");
           window.Telegram.WebApp.MainButton.show();
+        } else if (telegramIdFromQuery) {
+          setTelegramId(telegramIdFromQuery);
+          console.log("Telegram Web App SDK not available, using telegramId from query:", telegramIdFromQuery);
         } else {
-          console.warn("Not running in Telegram Web App environment.");
+          console.warn("Not running in Telegram Web App environment, and no telegramId provided.");
+          setStatus("Error: Telegram ID not found. Please open this app via Telegram.");
         }
 
         // Detect mobile device
@@ -130,23 +145,80 @@
         setIsMobile(/android|iPhone|iPad|iPod/i.test(userAgent));
         console.log("Is mobile device:", isMobile);
 
-        // Check for MetaMask (only for external browser)
-        if (window.ethereum && !window.Telegram.WebApp.initDataUnsafe) {
-          console.log("MetaMask detected in external browser.");
-          setWalletProvider("metamask");
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          setProvider(provider);
+        // Check for MetaMask or other wallet provider
+        const detectWalletProvider = () => {
+          if (window.ethereum) {
+            console.log("MetaMask or another wallet provider detected.");
+            setWalletProvider("metamask");
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            setProvider(provider);
 
-          const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-          const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-          setLuckToken(luckToken);
-          setLotteryContract(lotteryContract);
-        } else {
-          setWalletProvider(null);
-          setStatus(isMobile
-            ? "Please connect your wallet using MetaMask or WalletConnect."
-            : "Please connect your wallet using WalletConnect, or open in a browser to use MetaMask.");
-          console.log("No MetaMask detected in this environment.");
+            const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
+            const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+            setLuckToken(luckToken);
+            setLotteryContract(lotteryContract);
+          } else {
+            setWalletProvider(null);
+            setStatus(isMobile
+              ? "Please connect your wallet using MetaMask or WalletConnect."
+              : "Please connect your wallet using WalletConnect, or open in a browser to use MetaMask.");
+            console.log("No MetaMask detected in this environment.");
+          }
+        };
+
+        // Initial detection
+        detectWalletProvider();
+
+        // Re-check for wallet provider after a short delay (in case MetaMask loads asynchronously)
+        const recheckInterval = setInterval(() => {
+          if (!walletProvider && window.ethereum) {
+            console.log("Wallet provider detected after delay.");
+            detectWalletProvider();
+            clearInterval(recheckInterval);
+          }
+        }, 1000);
+
+        // Automatically initiate signing if action=sign
+        if (actionFromQuery === "sign" && messageFromQuery && telegramIdFromQuery && nonceFromQuery && window.ethereum) {
+          console.log("Detected sign action from query parameters. Initiating signing...");
+          setIsLoading(true);
+          setStatus("Connecting wallet and signing message...");
+          const connectAndSign = async () => {
+            try {
+              const provider = new ethers.BrowserProvider(window.ethereum);
+              setProvider(provider);
+              const accounts = await provider.send("eth_requestAccounts", []);
+              const signer = await provider.getSigner();
+              setAccount(accounts[0]);
+              setSigner(signer);
+              setWalletProvider("metamask");
+
+              const luckToken = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
+              const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+              setLuckToken(luckToken);
+              setLotteryContract(lotteryContract);
+
+              const message = decodeURIComponent(messageFromQuery);
+              const signature = await signer.signMessage(message);
+              console.log("Message signed:", message, "Signature:", signature);
+
+              // Send wallet address and signature to bot
+              window.Telegram.WebApp.sendData(JSON.stringify({
+                type: "wallet_verification",
+                address: accounts[0],
+                signature,
+                message
+              }));
+              setStatus("Wallet verification submitted! Please return to Telegram to continue.");
+              setAction("buy");
+            } catch (error) {
+              setStatus(`Error signing message: ${error.message}`);
+              console.error("Error signing message:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          };
+          connectAndSign();
         }
 
         // Fetch lottery info if provider is set
@@ -188,7 +260,6 @@
         fetchLotteryInfo();
 
         // Pre-fill ticket amount from query params (if coming from /buy_tickets)
-        const params = new URLSearchParams(window.location.search);
         const tickets = params.get("tickets");
         if (tickets) {
           setTicketAmount(Math.max(1, parseInt(tickets) || 1));
@@ -196,8 +267,9 @@
           console.log("Pre-filled ticket amount:", tickets);
         }
 
-        // Clean up MainButton event listeners on unmount
+        // Clean up on unmount
         return () => {
+          clearInterval(recheckInterval);
           if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.MainButton.offClick();
           }
@@ -278,13 +350,19 @@
         setIsLoading(true);
         setStatus("");
         try {
+          if (!telegramId) {
+            setStatus("Error: Telegram ID not found. Please restart the process in Telegram.");
+            console.error("Telegram ID is missing during mobile wallet connection.");
+            return;
+          }
+
           // Generate nonce and message for signing
           const nonce = Math.floor(Math.random() * 900000000) + 100000000;
           const message = `LuckyU: Link wallet to Telegram ID ${telegramId}. Nonce: ${nonce}`;
           
           // Create a deep link to MetaMask for signing
           const encodedMessage = encodeURIComponent(message);
-          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}\\/`;
+          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
           
           // Open MetaMask app
           window.Telegram.WebApp.openLink(deepLink);
