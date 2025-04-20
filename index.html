@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Connect</title>
-    <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/web3@1.10.0/dist/web3.min.js"></script>
     <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
     <style>
         body {
@@ -124,8 +124,19 @@
             document.getElementById('instructions').style.display = 'block';
         }
 
-        let provider;
-        let signer;
+        // Initialize Web3 with Infura as the default provider
+        const INFURA_API_KEY = "0ef552411b3b41bb9bc0da71755b3b89"; // Replace with your Infura API key
+        const INFURA_ENDPOINT = `https://bsc-testnet.infura.io/v3/${INFURA_API_KEY}`; // BNB Chain testnet (requires Infura's BNB Chain support)
+        let web3 = new Web3(INFURA_ENDPOINT);
+        console.log('Web3 initialized with Infura provider:', INFURA_ENDPOINT);
+
+        // Fallback to BNB Chain public RPC if Infura doesn't support BNB Chain directly
+        if (!INFURA_API_KEY || INFURA_API_KEY === "YOUR_INFURA_API_KEY") {
+            console.log('Falling back to BNB Chain public RPC...');
+            web3 = new Web3('https://data-seed-prebsc-1-s1.binance.org:8545/');
+        }
+
+        let connectedAccount;
 
         async function connectWallet() {
             try {
@@ -140,18 +151,17 @@
                 }
 
                 // After connection, sign the message
-                const address = await signer.getAddress();
-                console.log('Connected wallet address:', address);
-                document.getElementById('status').innerText = `Status: Connected to wallet. Address: ${address}`;
+                console.log('Connected account:', connectedAccount);
+                document.getElementById('status').innerText = `Status: Connected to wallet. Address: ${connectedAccount}`;
 
                 console.log('Signing message:', message);
-                const signature = await signer.signMessage(message);
+                const signature = await web3.eth.personal.sign(message, connectedAccount);
                 console.log('Message signed:', message, 'Signature:', signature);
 
                 // Prepare data to send back to the bot
                 const walletVerificationData = {
                     type: 'wallet_verification',
-                    address: address,
+                    address: connectedAccount,
                     signature: signature,
                     message: message
                 };
@@ -173,9 +183,16 @@
             console.log('MetaMask detected, attempting to connect...');
             document.getElementById('status').innerText = 'Status: Connecting to MetaMask...';
 
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            await provider.send("eth_requestAccounts", []);
-            signer = provider.getSigner();
+            // Request accounts from MetaMask
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) {
+                throw new Error('No accounts found. Please connect your MetaMask wallet.');
+            }
+
+            // Update Web3 provider to use MetaMask
+            web3 = new Web3(window.ethereum);
+            connectedAccount = accounts[0];
+            console.log('MetaMask connected, account:', connectedAccount);
         }
 
         async function connectWithWalletConnect() {
@@ -184,12 +201,11 @@
 
             // Initialize WalletConnect provider
             const walletConnectProvider = new window.WalletConnectProvider.default({
-                infuraId: "0ef552411b3b41bb9bc0da71755b3b89", // Replace with your Infura ID or use a custom RPC URL
+                infuraId: INFURA_API_KEY, // Optional if using custom RPC
                 rpc: {
-                    56: "https://bsc-dataseed.binance.org/", // BNB Chain mainnet
                     97: "https://data-seed-prebsc-1-s1.binance.org:8545/" // BNB Chain testnet
                 },
-                chainId: 97, // BNB Chain testnet (match your bot's network)
+                chainId: 97, // BNB Chain testnet
             });
 
             // Enable WalletConnect session (this will show QR code or deep link)
@@ -202,9 +218,11 @@
                 document.getElementById('qrCode').style.display = 'block';
             }
 
-            // Create Web3 provider
-            provider = new ethers.providers.Web3Provider(walletConnectProvider);
-            signer = provider.getSigner();
+            // Update Web3 provider to use WalletConnect
+            web3 = new Web3(walletConnectProvider);
+            const accounts = await web3.eth.getAccounts();
+            connectedAccount = accounts[0];
+            console.log('WalletConnect connected, account:', connectedAccount);
 
             // Listen for disconnect
             walletConnectProvider.on("disconnect", () => {
