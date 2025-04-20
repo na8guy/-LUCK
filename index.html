@@ -102,6 +102,7 @@
       const [isMobile, setIsMobile] = React.useState(false);
       const [isIOS, setIsIOS] = React.useState(false);
       const [walletProvider, setWalletProvider] = React.useState(null); // "metamask", null
+      const [manualVerificationData, setManualVerificationData] = React.useState(null);
 
       // Initialize Telegram Web App and fetch lottery info
       React.useEffect(() => {
@@ -114,10 +115,18 @@
         const messageFromQuery = params.get("message");
         const nonceFromQuery = params.get("nonce");
 
+        console.log("Current URL:", window.location.href);
+        console.log("Query parameters:", {
+          telegramId: telegramIdFromQuery,
+          action: actionFromQuery,
+          message: messageFromQuery,
+          nonce: nonceFromQuery
+        });
+
         // Telegram Web App setup
         if (window.Telegram && window.Telegram.WebApp) {
           console.log("Telegram Web App detected.");
-          window.Telegram.WebApp.ready();
+          window.Telegram.WebApp.ready(); // Initialize the Web App
           const user = window.Telegram.WebApp.initDataUnsafe.user;
           if (user) {
             setTelegramId(user.id.toString());
@@ -135,7 +144,7 @@
           console.log("Telegram Web App SDK not available, using telegramId from query:", telegramIdFromQuery);
         } else {
           console.warn("Not running in Telegram Web App environment, and no telegramId provided.");
-          setStatus("Error: Telegram ID not found. Please return to Telegram, restart the process, and ensure query parameters are preserved.");
+          setStatus("Error: Telegram ID not found. Please return to Telegram, restart the process with /set_wallet, and ensure the URL includes the telegramId query parameter.");
         }
 
         // Detect mobile device and platform
@@ -225,18 +234,20 @@
               console.log("Message signed:", message, "Signature:", signature);
 
               // Send wallet address and signature to bot
+              const verificationData = {
+                type: "wallet_verification",
+                address: accounts[0],
+                signature,
+                message
+              };
               try {
-                window.Telegram.WebApp.sendData(JSON.stringify({
-                  type: "wallet_verification",
-                  address: accounts[0],
-                  signature,
-                  message
-                }));
-                console.log("Sent wallet verification data to Telegram bot.");
+                window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
+                console.log("Sent wallet verification data to Telegram bot:", verificationData);
                 setStatus("Wallet verification submitted! Please return to Telegram to continue.");
               } catch (sendError) {
                 console.error("Error sending data to Telegram bot:", sendError);
-                setStatus(`Wallet verification completed, but could not send to Telegram bot: ${sendError.message}. Please manually submit this to the bot: Address=${accounts[0]}, Signature=${signature}, Message=${message}`);
+                setManualVerificationData(verificationData);
+                setStatus("Wallet verification completed, but could not send to Telegram bot. Please manually submit the data below to the bot.");
               }
               setAction("buy");
             } catch (error) {
@@ -362,7 +373,7 @@
         setStatus("");
         try {
           if (!telegramId) {
-            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process.");
+            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process with /set_wallet.");
             console.error("Telegram ID is missing during mobile wallet connection.");
             setIsLoading(false);
             return;
@@ -379,8 +390,20 @@
           // Log the deep link for debugging
           console.log("Deep link URL:", deepLink);
 
-          // Open MetaMask app using a direct link
+          // Attempt to open MetaMask with a timeout
           setStatus(`Opening MetaMask... If this doesn't work, please copy this URL and open it in MetaMask: ${deepLink}`);
+          
+          const startTime = Date.now();
+          const timeout = 3000; // 3 seconds timeout
+          const interval = setInterval(() => {
+            if (Date.now() - startTime > timeout) {
+              clearInterval(interval);
+              if (!account) {
+                setStatus(`Failed to open MetaMask. Please copy this URL and open it in MetaMask: ${deepLink}`);
+              }
+            }
+          }, 500);
+
           return deepLink; // Return the deepLink for the <a> tag
         } catch (error) {
           setStatus(`Error opening MetaMask: ${error.message}. Please copy the deep link URL from the console and open it in MetaMask.`);
@@ -396,7 +419,7 @@
         try {
           if (!window.ethereum) {
             setStatus(isMobile
-              ? (isIOS.DISABLED
+              ? (isIOS
                   ? "MetaMask not detected. Please open this app in MetaMask's in-app browser (see instructions below)."
                   : "MetaMask not detected. Please ensure MetaMask is installed and try again.")
               : "Please install MetaMask to connect your wallet.");
@@ -427,7 +450,7 @@
 
           // Generate nonce and sign message
           if (!telegramId) {
-            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process.");
+            setStatus("Error: Telegram ID not found. Please return to Telegram and restart the process with /set_wallet.");
             console.error("Telegram ID is missing during wallet verification.");
             setIsLoading(false);
             return;
@@ -449,18 +472,21 @@
           }
 
           // Send wallet address and signature to bot
+          const verificationData = {
+            type: "wallet_verification",
+            address: accounts[0],
+            signature,
+            message
+          };
           try {
-            window.Telegram.WebApp.sendData(JSON.stringify({
-              type: "wallet_verification",
-              address: accounts[0],
-              signature,
-              message
-            }));
-            console.log("Sent wallet verification data to Telegram bot.");
+            window.Telegram.WebApp.sendData(JSON.stringify(verificationData));
+            console.log("Sent wallet verification data to Telegram bot:", verificationData);
             setStatus("Wallet verification submitted! Please return to Telegram to continue.");
+            window.Telegram.WebApp.close(); // Close the Web App as in the example
           } catch (sendError) {
             console.error("Error sending data to Telegram bot:", sendError);
-            setStatus(`Wallet verification completed, but could not send to Telegram bot: ${sendError.message}. Please manually submit this to the bot: Address=${accounts[0]}, Signature=${signature}, Message=${message}`);
+            setManualVerificationData(verificationData);
+            setStatus("Wallet verification completed, but could not send to Telegram bot. Please manually submit the data below to the bot.");
           }
           setAction("buy"); // Switch to buy mode after connecting
         } catch (error) {
@@ -537,15 +563,18 @@
           console.log(`Bought ${ticketAmount} ticket(s) successfully.`);
 
           // Send confirmation to bot
+          const purchaseData = {
+            type: "purchased",
+            tickets: ticketAmount
+          };
           try {
-            window.Telegram.WebApp.sendData(JSON.stringify({
-              type: "purchased",
-              tickets: ticketAmount
-            }));
-            console.log("Sent ticket purchase confirmation to Telegram bot.");
+            window.Telegram.WebApp.sendData(JSON.stringify(purchaseData));
+            console.log("Sent ticket purchase confirmation to Telegram bot:", purchaseData);
+            setStatus(`Successfully bought ${ticketAmount} ticket(s)! Confirmation sent to bot.`);
+            window.Telegram.WebApp.close(); // Close the Web App as in the example
           } catch (sendError) {
             console.error("Error sending ticket purchase data to Telegram bot:", sendError);
-            setStatus(`Successfully bought ${ticketAmount} ticket(s), but could not send confirmation to Telegram bot: ${sendError.message}. Please notify the bot manually.`);
+            setStatus(`Successfully bought ${ticketAmount} ticket(s), but could not send confirmation to Telegram bot: ${sendError.message}. Please notify the bot manually with: Tickets Purchased=${ticketAmount}`);
           }
         } catch (error) {
           setStatus(`Error buying tickets: ${error.message}`);
@@ -609,6 +638,17 @@
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+              {manualVerificationData && (
+                <div className="mt-4 p-3 bg-yellow-100 rounded-lg">
+                  <p className="text-yellow-800 text-sm">
+                    <strong>Manual Submission Required:</strong> Please send the following data to the Telegram bot:<br/>
+                    Type: {manualVerificationData.type}<br/>
+                    Address: {manualVerificationData.address}<br/>
+                    Signature: {manualVerificationData.signature}<br/>
+                    Message: {manualVerificationData.message}
+                  </p>
                 </div>
               )}
             </div>
