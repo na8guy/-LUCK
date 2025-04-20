@@ -385,7 +385,7 @@
           
           // Create a deep link to MetaMask for signing
           const encodedMessage = encodeURIComponent(message);
-          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}`;
+          const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?action=sign&message=${encodedMessage}&telegramId=${telegramId}&nonce=${nonce}\\/`;
           
           // Log the deep link for debugging
           console.log("Deep link URL:", deepLink);
