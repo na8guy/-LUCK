@@ -32,10 +32,9 @@
     <button id="signButton" onclick="signMessage()" disabled>Sign Message</button>
     <p id="signature"></p>
 
-    <!-- Load ethers.js from cdnjs -->
+    <!-- Load ethers.js from cdnjs with the correct integrity hash -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
-            integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NW
-            DeBMH0lC5MTOfVMeaGvclA==" 
+            integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
             crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
     <script>
         function onEthersLoaded() {
@@ -63,15 +62,51 @@
                     return;
                 }
 
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                const network = await provider.getNetwork();
-                if (network.chainId !== 97) {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x61' }],
-                    });
+                // Check if MetaMask is locked or unavailable
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                if (!accounts || accounts.length === 0) {
+                    document.getElementById('status').innerText = 'Status: MetaMask is locked. Please unlock it and try again.';
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
                 }
 
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                const network = await provider.getNetwork();
+                console.log("Connected network:", network);
+
+                // Switch to BNB Chain Testnet (chainId 97)
+                if (network.chainId !== 97) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0x61' }],
+                        });
+                        document.getElementById('status').innerText = 'Status: Switched to BNB Chain Testnet.';
+                    } catch (switchError) {
+                        console.error("Error switching network:", switchError);
+                        if (switchError.code === 4902) {
+                            // Chain not added, add it
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0x61',
+                                    chainName: 'BNB Chain Testnet',
+                                    rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545'],
+                                    nativeCurrency: {
+                                        name: 'BNB',
+                                        symbol: 'BNB',
+                                        decimals: 18
+                                    },
+                                    blockExplorerUrls: ['https://testnet.bscscan.com']
+                                }],
+                            });
+                            document.getElementById('status').innerText = 'Status: Added and switched to BNB Chain Testnet.';
+                        } else {
+                            throw switchError;
+                        }
+                    }
+                }
+
+                // Request accounts again after network switch
                 await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
                 account = await signer.getAddress();
@@ -81,7 +116,7 @@
                 document.getElementById('signButton').disabled = false;
             } catch (error) {
                 console.error("Error connecting to wallet:", error);
-                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
+                document.getElementById('status').innerText = `Status: Error - ${error.message || 'Failed to connect to MetaMask'}`;
             }
         }
 
