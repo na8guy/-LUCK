@@ -4,170 +4,997 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; connect-src *;">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
+    integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
+    crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
+
     <style>
         body {
             font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
         }
-        #status, #account, #signature {
-            margin: 10px 0;
-            word-wrap: break-word;
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
         }
         button {
+            background-color: #4CAF50;
+            color: white;
             padding: 10px 20px;
-            font-size: 16px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            resize: none;
+        }
+        .info {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+        .warning {
+            color: #d9534f;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    
-    <h1>LuckyU Wallet Verification</h1>
-    <p id="message"></p>
-    <p id="account">Account: Not connected</p>
-    <p id="status">Status: Waiting for connection...</p>
-    <button id="connectButton" onclick="connectWallet()">Connect Wallet</button>
-    <button id="signButton" onclick="signMessage()" disabled>Sign Message</button>
-    <button onclick="copySignature()">Copy Signature</button>
-    <p id="signature"></p>
+    <div class="container">
+        <h2>LuckyU Wallet Verification</h2>
+        <p>Message to sign: <span id="message"></span></p>
+        <p>User ID: <span id="userId"></span></p>
+        <button id="signButton" onclick="signMessageAndVerify()">Sign and Verify with MetaMask</button>
+        <textarea id="result" readonly placeholder="Your signature and transaction hash will appear here..."></textarea>
+        <div class="info">
+            <p><strong>Note:</strong> By clicking "Sign and Verify with MetaMask", you will:</p>
+            <ul>
+                <li>Sign a message to prove you own this wallet (no gas fees).</li>
+                <li>Send a transaction to link your wallet to your Telegram ID on the blockchain (requires gas fees).</li>
+            </ul>
+            <p class="warning">⚠️ Ensure you have testnet BNB for gas fees. Get some at: <a href="https://www.bnbchain.org/en/testnet-faucet" target="_blank">BNB Chain Testnet Faucet</a></p>
+            <p>After verification, the LuckyU bot will be able to send transactions on your behalf (e.g., to buy lottery tickets) using a pre-funded bot account to cover gas fees. You will still need to approve any $LUCK token spending.</p>
+            <p>Copy the signature and transaction hash from the box above and paste them back into the Telegram chat to complete the verification process.</p>
+        </div>
+    </div>
 
-    <!-- Load ethers.js from cdnjs with the correct integrity hash -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
-            integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
-            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
     <script>
         function onEthersLoaded() {
             console.log("ethers loaded:", typeof ethers);
             document.getElementById('status').innerText = 'Status: ethers.js loaded. Please connect your wallet.';
         }
-
-        let provider;
-        let signer;
-        let account;
-
-        // Get the message from the URL query parameter
+        // Extract message and user ID from URL query parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const message = urlParams.get('message');
-        document.getElementById('message').innerText = `Message to sign: ${message || 'No message provided'}`;
+        const message = urlParams.get('message') || 'Default message';
+        const userIdMatch = message.match(/Verify LuckyU Wallet: (\d+):/);
+        const userId = userIdMatch ? userIdMatch[1] : 'Unknown';
 
-        async function connectWallet() {
-            if (typeof ethers === 'undefined') {
-                document.getElementById('status').innerText = 'Status: ethers.js failed to load. Please refresh the page or check your network.';
-                return;
-            }
+        document.getElementById('message').textContent = message;
+        document.getElementById('userId').textContent = userId;
+
+        // Contract details
+        const LOTTERY_CONTRACT_ADDRESS = '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609'; // Replace with actual address
+        const LOTTERY_CONTRACT_ABI = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_luckToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_insuranceVault",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_governanceContract",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "OnlyCoordinatorCanFulfill",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "have",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "want",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "OwnableInvalidOwner",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "name": "LotteryEnded",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "winningNumber",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LotteryStarted",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "startTime",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "endTime",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LotteryTimingUpdated",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "startHour",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "endHour",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "resultHour",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LotteryWinner",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "winner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "prize",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tier",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "OwnershipTransferred",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "RandomnessRequested",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "requestId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "TicketsPurchased",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "numberOfTickets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "ticketNumbers",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "WalletLinked",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "COORDINATOR",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract VRFCoordinatorV2Interface"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "buyTickets",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "numberOfTickets",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "currentLotteryId",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "endLottery",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "getInsuranceVaultAddress",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "getLotteryInfo",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "getUserTickets",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "governanceContract",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IGovernance"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "insuranceVault",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "isVerified",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "lotteries",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "startTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "endTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "resultTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ended",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "participantCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "prizePool",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "lotteryEndHour",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "lotteryStartHour",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "luckToken",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IERC20"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "openLottery",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "owner",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "participants",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "rawFulfillRandomWords",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "requestId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "randomWords",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "renounceOwnership",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "requestIdToLotteryId",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "resultHour",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "setInsuranceVaultAddress",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_insuranceVault",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "setLotteryTiming",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_startHour",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_endHour",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_resultHour",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "setSubscriptionId",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_subscriptionId",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "subscriptionId",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "telegramIds",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "ticketPrice",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "tickets",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "ticketsPerUser",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "name": "transferOwnership",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "verifyWallet",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "winningNumber",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  }
+]; // Replace with actual ABI (as a JSON array)
+        const CHAIN_ID = 97; // BNB Chain Testnet
+
+        async function signMessageAndVerify() {
             try {
+                // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    document.getElementById('status').innerText = 'Status: Please install MetaMask!';
+                    alert('Please install MetaMask to proceed!');
                     return;
                 }
 
-                // Check if MetaMask is locked or unavailable
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                if (!accounts || accounts.length === 0) {
-                    document.getElementById('status').innerText = 'Status: MetaMask is locked. Please unlock it and try again.';
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                }
+                // Request access to the user's wallet
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const signer = provider.getSigner();
+                const userAddress = await signer.getAddress();
 
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                const network = await provider.getNetwork();
-                console.log("Connected network:", network);
-
-                // Switch to BNB Chain Testnet (chainId 97)
-                if (network.chainId !== 97) {
-                    try {
+                // Switch to BNB Chain Testnet
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
+                    });
+                } catch (switchError) {
+                    // If the chain isn't added, add it
+                    if (switchError.code === 4902) {
                         await window.ethereum.request({
-                            method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: '0x61' }],
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: `0x${CHAIN_ID.toString(16)}`,
+                                chainName: 'BNB Chain Testnet',
+                                rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545'],
+                                nativeCurrency: {
+                                    name: 'BNB',
+                                    symbol: 'BNB',
+                                    decimals: 18
+                                },
+                                blockExplorerUrls: ['https://testnet.bscscan.com']
+                            }],
                         });
-                        document.getElementById('status').innerText = 'Status: Switched to BNB Chain Testnet.';
-                    } catch (switchError) {
-                        console.error("Error switching network:", switchError);
-                        if (switchError.code === 4902) {
-                            // Chain not added, add it
-                            await window.ethereum.request({
-                                method: 'wallet_addEthereumChain',
-                                params: [{
-                                    chainId: '0x61',
-                                    chainName: 'BNB Chain Testnet',
-                                    rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545'],
-                                    nativeCurrency: {
-                                        name: 'BNB',
-                                        symbol: 'BNB',
-                                        decimals: 18
-                                    },
-                                    blockExplorerUrls: ['https://testnet.bscscan.com']
-                                }],
-                            });
-                            document.getElementById('status').innerText = 'Status: Added and switched to BNB Chain Testnet.';
-                        } else {
-                            throw switchError;
-                        }
+                    } else {
+                        throw switchError;
                     }
                 }
 
-                // Request accounts again after network switch
-                await provider.send("eth_requestAccounts", []);
-                signer = provider.getSigner();
-                account = await signer.getAddress();
-
-                document.getElementById('account').innerText = `Account: ${account}`;
-                document.getElementById('status').innerText = 'Status: Connected!';
-                document.getElementById('signButton').disabled = false;
-            } catch (error) {
-                console.error("Error connecting to wallet:", error);
-                document.getElementById('status').innerText = `Status: Error - ${error.message || 'Failed to connect to MetaMask'}`;
-            }
-        }
-
-        async function signMessage() {
-            if (typeof ethers === 'undefined') {
-                document.getElementById('status').innerText = 'Status: ethers.js failed to load. Please refresh the page or check your network.';
-                return;
-            }
-            if (!message) {
-                document.getElementById('status').innerText = 'Status: No message to sign!';
-                return;
-            }
-
-            try {
+                // Step 1: Sign the EIP-712 message
                 const domain = {
-    name: 'LuckyU',
-    version: '1',
-    chainId: 97,
-    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609'
-};
-const types = {
-    WalletVerification: [
-        { name: 'message', type: 'string' },
-        { name: 'userAddress', type: 'address' }
-    ]
-};
-const value = {
-    message: message,
-    userAddress: account
-};
+                    name: 'LuckyU',
+                    version: '1',
+                    chainId: CHAIN_ID,
+                    verifyingContract: LOTTERY_CONTRACT_ADDRESS
+                };
+                const types = {
+                    WalletVerification: [
+                        { name: 'message', type: 'string' },
+                        { name: 'userAddress', type: 'address' }
+                    ]
+                };
+                const value = {
+                    message: message,
+                    userAddress: userAddress
+                };
+                const signature = await signer._signTypedData(domain, types, value);
+                console.log('Signature:', signature);
 
+                // Step 2: Send the verifyWallet transaction
+                const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
+                const tx = await contract.verifyWallet(userId, {
+                    gasLimit: 100000,
+                    value: 0
+                });
+                console.log('Transaction sent:', tx.hash);
 
-const signature = await signer._signTypedData(domain, types, value);
-                document.getElementById('signature').innerText = `Signature: ${signature}`;
-                document.getElementById('status').innerText = 'Status: Message signed! Copy the signature above and paste it in Telegram.';
+                // Wait for the transaction to be mined (optional, for user feedback)
+                const receipt = await tx.wait();
+                console.log('Transaction confirmed:', receipt);
+
+                // Display the signature and transaction hash
+                const result = `Signature: ${signature}\nTransaction Hash: ${tx.hash}`;
+                document.getElementById('result').value = result;
+
+                alert('Wallet verification successful! Please copy the signature and transaction hash above and paste them back into the Telegram chat.');
+
             } catch (error) {
-                console.error("Error signing message:", error);
-                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
+                console.error('Error:', error);
+                document.getElementById('result').value = `Error: ${error.message}`;
+                alert(`Error: ${error.message}`);
             }
-
-            function copySignature() {
-    const signatureText = document.getElementById('signature').innerText.replace('Signature: ', '');
-    navigator.clipboard.writeText(signatureText).then(() => {
-        document.getElementById('status').innerText = 'Status: Signature copied! Paste it in Telegram.';
-    }).catch(err => {
-        document.getElementById('status').innerText = 'Status: Failed to copy signature. Please copy it manually.';
-    });
-}
         }
     </script>
-  
 </body>
 </html>
