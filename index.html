@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; connect-src *;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://data-seed-prebsc-1-s1.binance.org:8545;">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -51,6 +51,13 @@
         const message = urlParams.get('message');
         document.getElementById('message').innerText = `Message to sign: ${message || 'No message provided'}`;
 
+        // Validate required query parameters
+        if (!message) {
+            document.getElementById('status').innerText = 'Status: Error - Missing required query parameter (message).';
+            document.getElementById('signButton').disabled = true;
+            return;
+        }
+
         async function connectWallet() {
             if (typeof ethers === 'undefined') {
                 document.getElementById('status').innerText = 'Status: ethers.js failed to load. Please refresh the page or check your network.';
@@ -62,7 +69,6 @@
                     return;
                 }
 
-                // Check if MetaMask is locked or unavailable
                 const accounts = await window.ethereum.request({ method: 'eth_accounts' });
                 if (!accounts || accounts.length === 0) {
                     document.getElementById('status').innerText = 'Status: MetaMask is locked. Please unlock it and try again.';
@@ -73,7 +79,6 @@
                 const network = await provider.getNetwork();
                 console.log("Connected network:", network);
 
-                // Switch to BNB Chain Testnet (chainId 97)
                 if (network.chainId !== 97) {
                     try {
                         await window.ethereum.request({
@@ -84,7 +89,6 @@
                     } catch (switchError) {
                         console.error("Error switching network:", switchError);
                         if (switchError.code === 4902) {
-                            // Chain not added, add it
                             await window.ethereum.request({
                                 method: 'wallet_addEthereumChain',
                                 params: [{
@@ -106,13 +110,12 @@
                     }
                 }
 
-                // Request accounts again after network switch
                 await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
                 account = await signer.getAddress();
 
                 document.getElementById('account').innerText = `Account: ${account}`;
-                document.getElementById('status').innerText = 'Status: Connected!';
+                document.getElementById('status').innerText = 'Status: Connected! Please sign the message.';
                 document.getElementById('signButton').disabled = false;
             } catch (error) {
                 console.error("Error connecting to wallet:", error);
