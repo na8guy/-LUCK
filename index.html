@@ -30,6 +30,7 @@
     <p id="status">Status: Waiting for connection...</p>
     <button id="connectButton" onclick="connectWallet()">Connect Wallet</button>
     <button id="signButton" onclick="signMessage()" disabled>Sign Message</button>
+    <button onclick="copySignature()">Copy Signature</button>
     <p id="signature"></p>
 
     <!-- Load ethers.js from cdnjs with the correct integrity hash -->
@@ -147,6 +148,8 @@ const value = {
     message: message,
     userAddress: account
 };
+
+
 const signature = await signer._signTypedData(domain, types, value);
                 document.getElementById('signature').innerText = `Signature: ${signature}`;
                 document.getElementById('status').innerText = 'Status: Message signed! Copy the signature above and paste it in Telegram.';
@@ -154,6 +157,15 @@ const signature = await signer._signTypedData(domain, types, value);
                 console.error("Error signing message:", error);
                 document.getElementById('status').innerText = `Status: Error - ${error.message}`;
             }
+
+            function copySignature() {
+    const signatureText = document.getElementById('signature').innerText.replace('Signature: ', '');
+    navigator.clipboard.writeText(signatureText).then(() => {
+        document.getElementById('status').innerText = 'Status: Signature copied! Paste it in Telegram.';
+    }).catch(err => {
+        document.getElementById('status').innerText = 'Status: Failed to copy signature. Please copy it manually.';
+    });
+}
         }
     </script>
   
