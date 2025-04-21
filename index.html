@@ -25,15 +25,32 @@
             margin-top: 20px;
             color: red;
         }
+        #message {
+            margin-top: 20px;
+            word-wrap: break-word;
+        }
+        #signature {
+            margin-top: 20px;
+            word-wrap: break-word;
+        }
+        #instructions {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
-    <h2>EIP-712 Signing with MetaMask</h2>
+    <h2>LuckyU Wallet Verification</h2>
+    <p id="message">Message to sign: Loading...</p>
     <button id="connectButton">Connect to MetaMask</button>
-    <button id="signTypedDataV4Button" disabled>Sign Typed Data (v4)</button>
+    <button id="signTypedDataV4Button" disabled>Sign with MetaMask</button>
     <p id="account">Account: Not connected</p>
     <p id="status"></p>
     <p id="error"></p>
+    <p id="signature"></p>
+    <div id="instructions"></div>
 
     <script>
         const connectButton = document.getElementById('connectButton');
@@ -41,10 +58,19 @@
         const accountDisplay = document.getElementById('account');
         const statusDisplay = document.getElementById('status');
         const errorDisplay = document.getElementById('error');
+        const messageDisplay = document.getElementById('message');
+        const signatureDisplay = document.getElementById('signature');
+        const instructionsDisplay = document.getElementById('instructions');
 
         let provider;
         let signer;
         let userAddress;
+        let messageToSign;
+
+        // Get the message from the URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        messageToSign = urlParams.get('message') || 'Default message';
+        messageDisplay.textContent = `Message to sign: ${messageToSign}`;
 
         // Connect to MetaMask
         connectButton.addEventListener('click', async () => {
@@ -76,45 +102,29 @@
                 // Clear previous messages
                 statusDisplay.textContent = '';
                 errorDisplay.textContent = '';
+                signatureDisplay.textContent = '';
+                instructionsDisplay.textContent = '';
 
                 // Define the EIP-712 domain separator
                 const domain = {
-                    name: 'Ether Mail',
+                    name: 'LuckyU',
                     version: '1',
                     chainId: await provider.getNetwork().then(net => net.chainId),
-                    verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC'
+                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609' // Use your contract address
                 };
 
                 // Define the types for the structured data
                 const types = {
-                    Person: [
-                        { name: 'name', type: 'string' },
-                        { name: 'wallets', type: 'address[]' }
-                    ],
-                    Mail: [
-                        { name: 'from', type: 'Person' },
-                        { name: 'to', type: 'Person[]' },
-                        { name: 'contents', type: 'string' }
+                    WalletVerification: [
+                        { name: 'message', type: 'string' },
+                        { name: 'userAddress', type: 'address' }
                     ]
                 };
 
                 // Define the message to sign
                 const message = {
-                    from: {
-                        name: 'Cow',
-                        wallets: [
-                            '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826',
-                            '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF'
-                        ]
-                    },
-                    to: [{
-                        name: 'Bob',
-                        wallets: [
-                            '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB',
-                            '0xB0BdaBea57B0BDABeA57b0bdABEA57b0BDabEa57'
-                        ]
-                    }],
-                    contents: 'Hello, Bob!'
+                    message: messageToSign,
+                    userAddress: userAddress
                 };
 
                 // Sign the typed data
@@ -123,7 +133,7 @@
                     JSON.stringify({
                         domain,
                         types,
-                        primaryType: 'Mail',
+                        primaryType: 'WalletVerification',
                         message
                     })
                 ]);
@@ -131,13 +141,21 @@
                 // Verify the signature
                 const recoveredAddress = ethers.utils.verifyTypedData(
                     domain,
-                    { Mail: types.Mail, Person: types.Person },
+                    { WalletVerification: types.WalletVerification },
                     message,
                     signature
                 );
 
                 if (recoveredAddress.toLowerCase() === userAddress.toLowerCase()) {
-                    statusDisplay.textContent = `Signature verified! Signed by: ${recoveredAddress}\nSignature: ${signature}`;
+                    statusDisplay.textContent = 'Signature verified successfully!';
+                    signatureDisplay.textContent = `Signature: ${signature}`;
+                    instructionsDisplay.innerHTML = `
+                        <strong>Next Steps:</strong><br>
+                        1. Copy the signature above.<br>
+                        2. Return to the LuckyU Telegram bot.<br>
+                        3. Paste the signature in the chat to complete wallet verification.<br>
+                        <a href="https://t.me/yourBotUsername">Click here to return to the bot</a>
+                    `;
                 } else {
                     errorDisplay.textContent = `Signature verification failed! Recovered: ${recoveredAddress}, Expected: ${userAddress}`;
                 }
@@ -159,6 +177,8 @@
                     connectButton.disabled = false;
                     statusDisplay.textContent = '';
                     errorDisplay.textContent = 'Please connect to MetaMask.';
+                    signatureDisplay.textContent = '';
+                    instructionsDisplay.textContent = '';
                 }
             });
         }
