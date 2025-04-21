@@ -33,8 +33,9 @@
     <p id="signature"></p>
 
     <!-- Load ethers.js from cdnjs -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" integrity="sha512-JlXfz0L5xEVgqo3Ki2uHIMzP7tH2odkQKk0Gq2aL3gQk6no1LJtX5lltM9oRdF3gL0R2t2sLLo8v7pR2qFw==" crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
-    <script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
+    integrity="sha512-pz5n3z69d8uWnO+UKmM2k5E5kXfsjmZc6KxG0xXjdEf1e9l5yQ4fH4n1lJ7lG3gq4z8fN2b5xJ5lX5eJ5mY=" 
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
         function onEthersLoaded() {
             console.log("ethers loaded:", typeof ethers);
             document.getElementById('status').innerText = 'Status: ethers.js loaded. Please connect your wallet.';
