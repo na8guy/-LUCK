@@ -33,7 +33,9 @@
     <p id="signature"></p>
 
     <!-- Load ethers.js from cdnjs -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js"  crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
+            integrity="sha512-pz5n3z69d8uWnO+UKmM2k5E5kXfsjmZc6KxG0xXjdEf1e9l5yQ4fH4n1lJ7lG3gq4z8fN2b5xJ5lX5eJ5mY=" 
+            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
     <script>
         function onEthersLoaded() {
             console.log("ethers loaded:", typeof ethers);
@@ -97,15 +99,9 @@
                     name: 'LuckyU',
                     version: '1',
                     chainId: 97,
-                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609' // Replace with actual address
+                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609'
                 };
                 const types = {
-                    EIP712Domain: [
-                        { name: 'name', type: 'string' },
-                        { name: 'version', type: 'string' },
-                        { name: 'chainId', type: 'uint256' },
-                        { name: 'verifyingContract', type: 'address' }
-                    ],
                     WalletVerification: [
                         { name: 'message', type: 'string' },
                         { name: 'userAddress', type: 'address' }
