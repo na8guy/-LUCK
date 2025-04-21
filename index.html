@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.ethers.io 'unsafe-inline' 'unsafe-eval'; connect-src *;">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -31,8 +32,13 @@
     <p id="signature"></p>
 
     <!-- Load ethers.js from a CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" integrity="sha512-JlXfz0L5xEVgqo3Ki2uHIMzP7tH2odkQKk0Gq2aL3gQk6no1LJtX5lltM9oRdF3gL0R2t2sLLo8v7pR2qFw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" onload="onEthersLoaded()"></script>
     <script>
+        function onEthersLoaded() {
+            console.log("ethers loaded:", typeof ethers);
+            document.getElementById('status').innerText = 'Status: ethers.js loaded. Please connect your wallet.';
+        }
+
         let provider;
         let signer;
         let account;
@@ -43,6 +49,10 @@
         document.getElementById('message').innerText = `Message to sign: ${message || 'No message provided'}`;
 
         async function connectWallet() {
+            if (typeof ethers === 'undefined') {
+                document.getElementById('status').innerText = 'Status: ethers.js failed to load. Please refresh the page or check your network.';
+                return;
+            }
             try {
                 if (!window.ethereum) {
                     document.getElementById('status').innerText = 'Status: Please install MetaMask!';
@@ -50,6 +60,14 @@
                 }
 
                 provider = new ethers.providers.Web3Provider(window.ethereum);
+                const network = await provider.getNetwork();
+                if (network.chainId !== 97) {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x61' }],
+                    });
+                }
+
                 await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
                 account = await signer.getAddress();
@@ -64,18 +82,21 @@
         }
 
         async function signMessage() {
+            if (typeof ethers === 'undefined') {
+                document.getElementById('status').innerText = 'Status: ethers.js failed to load. Please refresh the page or check your network.';
+                return;
+            }
             if (!message) {
                 document.getElementById('status').innerText = 'Status: No message to sign!';
                 return;
             }
 
             try {
-                // Define the EIP-712 domain and types (must match bot.py)
                 const domain = {
                     name: 'LuckyU',
                     version: '1',
-                    chainId: 97, // BNB Chain Testnet
-                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609' // Replace with LOTTERY_CONTRACT_ADDRESS
+                    chainId: 97,
+                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609' // Replace with actual address
                 };
                 const types = {
                     WalletVerification: [
