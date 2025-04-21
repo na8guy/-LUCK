@@ -3,244 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LuckyU Wallet Connect</title>
-    <script src="https://unpkg.com/web3@1.10.0/dist/web3.min.js"></script>
-    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+    <title>EIP-712 Signing with MetaMask</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-        .container {
+            margin: 20px;
             text-align: center;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
         button {
             padding: 10px 20px;
             margin: 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
+            font-size: 16px;
             cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
         }
         #status {
             margin-top: 20px;
-            color: #333;
+            color: green;
         }
-        #manualSubmission {
-            display: none;
+        #error {
             margin-top: 20px;
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        #qrCode {
-            display: none;
-            margin-top: 20px;
-        }
-        #instructions {
-            display: none;
-            margin-top: 20px;
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            text-align: left;
+            color: red;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>LuckyU Wallet Connect t</h1>
-        <p>Connect your MetaMask wallet to proceed.</p>
-        <button id="connectWalletBtn" onclick="connectWallet()">Connect Wallet</button>
-        <div id="status">Status: Waiting for connection...</div>
-        <div id="instructions">
-            <h3>Mobile Instructions</h3>
-            <p>Follow these steps to connect your MetaMask wallet on mobile:</p>
-            <ol>
-                <li><strong>Open MetaMask</strong>: Click "Connect Wallet" to open MetaMask via WalletConnect.</li>
-                <li><strong>Connect and Sign</strong>: Approve the connection in MetaMask and sign the message.</li>
-            </ol>
-        </div>
-        <div id="qrCode">
-            <p>Scan this QR code with your MetaMask app to connect (if on desktop):</p>
-            <img id="qrCodeImg" src="" alt="WalletConnect QR Code">
-        </div>
-        <div id="manualSubmission">
-            <p>Please copy the following data and send it to your bot in Telegram:</p>
-            <pre id="manualData"></pre>
-        </div>
-    </div>
+    <h2>EIP-712 Signing with MetaMask</h2>
+    <button id="connectButton">Connect to MetaMask</button>
+    <button id="signTypedDataV4Button" disabled>Sign Typed Data (v4)</button>
+    <p id="account">Account: Not connected</p>
+    <p id="status"></p>
+    <p id="error"></p>
 
     <script>
-        // Parse query parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const telegramId = urlParams.get('telegramId');
-        const nonce = urlParams.get('nonce');
-        const message = urlParams.get('message');
-        const action = urlParams.get('action');
-        const botUsername = urlParams.get('botUsername');
-        console.log('Query parameters:', { telegramId, nonce, message, action, botUsername });
+        const connectButton = document.getElementById('connectButton');
+        const signTypedDataV4Button = document.getElementById('signTypedDataV4Button');
+        const accountDisplay = document.getElementById('account');
+        const statusDisplay = document.getElementById('status');
+        const errorDisplay = document.getElementById('error');
 
-        // Validate parameters
-        if (!telegramId || !nonce || !message || !action || !botUsername) {
-            console.error('Missing required query parameters');
-            document.getElementById('status').innerText = 'Status: Error - Missing required query parameters.';
-            return;
-        }
+        let provider;
+        let signer;
+        let userAddress;
 
-        // Detect if on mobile device
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        console.log('Is mobile device:', isMobile);
-
-        // Detect if the page is loaded in MetaMask's in-app browser
-        const isMetaMaskBrowser = navigator.userAgent.includes('MetaMask');
-        console.log('Is MetaMask browser:', isMetaMaskBrowser);
-
-        // Set initial status message
-        if (action === 'sign') {
-            console.log('Detected sign action from query parameters. Initiating signing...');
-            document.getElementById('status').innerText = `Status: Please connect your MetaMask wallet to sign the message: "${message}"`;
-        } else {
-            console.error('Unsupported action:', action);
-            document.getElementById('status').innerText = `Status: Error - Unsupported action: ${action}`;
-            return;
-        }
-
-        // Show instructions if on mobile
-        if (isMobile) {
-            document.getElementById('instructions').style.display = 'block';
-        }
-
-        // Initialize Web3 with Infura as the default provider
-        const INFURA_API_KEY = "0ef552411b3b41bb9bc0da71755b3b89"; // Replace with your Infura API key
-        const INFURA_ENDPOINT = `https://bsc-testnet.infura.io/v3/${INFURA_API_KEY}`; // BNB Chain testnet (requires Infura's BNB Chain support)
-        let web3 = new Web3(INFURA_ENDPOINT);
-        console.log('Web3 initialized with Infura provider:', INFURA_ENDPOINT);
-
-        // Fallback to BNB Chain public RPC if Infura doesn't support BNB Chain directly
-        if (!INFURA_API_KEY || INFURA_API_KEY === "YOUR_INFURA_API_KEY") {
-            console.log('Falling back to BNB Chain public RPC...');
-            web3 = new Web3('https://data-seed-prebsc-1-s1.binance.org:8545/');
-        }
-
-        let connectedAccount;
-
-        async function connectWallet() {
+        // Connect to MetaMask
+        connectButton.addEventListener('click', async () => {
             try {
-                if (isMobile && !isMetaMaskBrowser) {
-                    // On mobile, use WalletConnect
-                    console.log('Mobile device detected, initializing WalletConnect...');
-                    await connectWithWalletConnect();
-                } else {
-                    // On desktop or in MetaMask browser, use MetaMask directly
-                    console.log('Desktop or MetaMask browser detected, using MetaMask directly...');
-                    await connectWithMetaMask();
+                // Check if MetaMask is installed
+                if (!window.ethereum) {
+                    throw new Error('MetaMask is not installed. Please install it to proceed.');
                 }
 
-                // After connection, sign the message
-                console.log('Connected account:', connectedAccount);
-                document.getElementById('status').innerText = `Status: Connected to wallet. Address: ${connectedAccount}`;
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send('eth_requestAccounts', []);
+                signer = provider.getSigner();
+                userAddress = await signer.getAddress();
 
-                console.log('Signing message:', message);
-                const signature = await web3.eth.personal.sign(message, connectedAccount);
-                console.log('Message signed:', message, 'Signature:', signature);
-
-                // Prepare data to send back to the bot
-                const walletVerificationData = {
-                    type: 'wallet_verification',
-                    address: connectedAccount,
-                    signature: signature,
-                    message: message
-                };
-                console.log('Prepared wallet verification data:', walletVerificationData);
-
-                // Send data back to the bot (simulated via manual submission)
-                await sendDataToBot(walletVerificationData);
+                accountDisplay.textContent = `Account: ${userAddress}`;
+                signTypedDataV4Button.disabled = false;
+                connectButton.disabled = true;
+                statusDisplay.textContent = 'Connected to MetaMask!';
+                errorDisplay.textContent = '';
             } catch (error) {
-                console.error('Error connecting to wallet:', error);
-                document.getElementById('status').innerText = `Status: Error connecting to wallet: ${error.message}`;
+                errorDisplay.textContent = `Error: ${error.message}`;
+                statusDisplay.textContent = '';
             }
-        }
+        });
 
-        async function connectWithMetaMask() {
-            if (!window.ethereum) {
-                throw new Error('MetaMask is not available. Please install the MetaMask extension.');
-            }
-
-            console.log('MetaMask detected, attempting to connect...');
-            document.getElementById('status').innerText = 'Status: Connecting to MetaMask...';
-
-            // Request accounts from MetaMask
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            if (!accounts || accounts.length === 0) {
-                throw new Error('No accounts found. Please connect your MetaMask wallet.');
-            }
-
-            // Update Web3 provider to use MetaMask
-            web3 = new Web3(window.ethereum);
-            connectedAccount = accounts[0];
-            console.log('MetaMask connected, account:', connectedAccount);
-        }
-
-        async function connectWithWalletConnect() {
-            console.log('Initializing WalletConnect provider...');
-            document.getElementById('status').innerText = 'Status: Connecting via WalletConnect...';
-
-            // Initialize WalletConnect provider
-            const walletConnectProvider = new window.WalletConnectProvider.default({
-                infuraId: INFURA_API_KEY, // Optional if using custom RPC
-                rpc: {
-                    97: "https://data-seed-prebsc-1-s1.binance.org:8545/" // BNB Chain testnet
-                },
-                chainId: 97, // BNB Chain testnet
-            });
-
-            // Enable WalletConnect session (this will show QR code or deep link)
-            await walletConnectProvider.enable();
-            console.log('WalletConnect session enabled');
-
-            // Hide QR code if on mobile (WalletConnect will use deep link instead)
-            if (!isMobile) {
-                document.getElementById('qrCodeImg').src = walletConnectProvider.connector.uri;
-                document.getElementById('qrCode').style.display = 'block';
-            }
-
-            // Update Web3 provider to use WalletConnect
-            web3 = new Web3(walletConnectProvider);
-            const accounts = await web3.eth.getAccounts();
-            connectedAccount = accounts[0];
-            console.log('WalletConnect connected, account:', connectedAccount);
-
-            // Listen for disconnect
-            walletConnectProvider.on("disconnect", () => {
-                console.log('WalletConnect disconnected');
-                document.getElementById('status').innerText = 'Status: Wallet disconnected.';
-            });
-        }
-
-        async function sendDataToBot(data) {
+        // Sign Typed Data with EIP-712 (eth_signTypedData_v4)
+        signTypedDataV4Button.addEventListener('click', async () => {
             try {
-                console.log('Displaying data for manual submission:', data);
-                document.getElementById('status').innerText = `Status: Please send the data below to @${botUsername} in Telegram.`;
-                document.getElementById('manualSubmission').style.display = 'block';
-                document.getElementById('manualData').innerText = JSON.stringify(data, null, 2);
+                // Clear previous messages
+                statusDisplay.textContent = '';
+                errorDisplay.textContent = '';
+
+                // Define the EIP-712 domain separator
+                const domain = {
+                    name: 'Ether Mail',
+                    version: '1',
+                    chainId: await provider.getNetwork().then(net => net.chainId),
+                    verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC'
+                };
+
+                // Define the types for the structured data
+                const types = {
+                    Person: [
+                        { name: 'name', type: 'string' },
+                        { name: 'wallets', type: 'address[]' }
+                    ],
+                    Mail: [
+                        { name: 'from', type: 'Person' },
+                        { name: 'to', type: 'Person[]' },
+                        { name: 'contents', type: 'string' }
+                    ]
+                };
+
+                // Define the message to sign
+                const message = {
+                    from: {
+                        name: 'Cow',
+                        wallets: [
+                            '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826',
+                            '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF'
+                        ]
+                    },
+                    to: [{
+                        name: 'Bob',
+                        wallets: [
+                            '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB',
+                            '0xB0BdaBea57B0BDABeA57b0bdABEA57b0BDabEa57'
+                        ]
+                    }],
+                    contents: 'Hello, Bob!'
+                };
+
+                // Sign the typed data
+                const signature = await provider.send('eth_signTypedData_v4', [
+                    userAddress,
+                    JSON.stringify({
+                        domain,
+                        types,
+                        primaryType: 'Mail',
+                        message
+                    })
+                ]);
+
+                // Verify the signature
+                const recoveredAddress = ethers.utils.verifyTypedData(
+                    domain,
+                    { Mail: types.Mail, Person: types.Person },
+                    message,
+                    signature
+                );
+
+                if (recoveredAddress.toLowerCase() === userAddress.toLowerCase()) {
+                    statusDisplay.textContent = `Signature verified! Signed by: ${recoveredAddress}\nSignature: ${signature}`;
+                } else {
+                    errorDisplay.textContent = `Signature verification failed! Recovered: ${recoveredAddress}, Expected: ${userAddress}`;
+                }
             } catch (error) {
-                console.error('Error sending data to bot:', error);
-                document.getElementById('status').innerText = `Status: Error sending data to bot: ${error.message}`;
+                errorDisplay.textContent = `Error: ${error.message}`;
+                statusDisplay.textContent = '';
             }
+        });
+
+        // Handle chain changes
+        if (window.ethereum) {
+            window.ethereum.on('chainChanged', () => {
+                window.location.reload();
+            });
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length === 0) {
+                    accountDisplay.textContent = 'Account: Not connected';
+                    signTypedDataV4Button.disabled = true;
+                    connectButton.disabled = false;
+                    statusDisplay.textContent = '';
+                    errorDisplay.textContent = 'Please connect to MetaMask.';
+                }
+            });
         }
     </script>
 </body>
