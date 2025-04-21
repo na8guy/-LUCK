@@ -3,184 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EIP-712 Signing with MetaMask</title>
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+    <title>LuckyU Wallet Verification</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
             text-align: center;
+            margin: 20px;
+        }
+        #status, #account, #signature {
+            margin: 10px 0;
+            word-wrap: break-word;
         }
         button {
             padding: 10px 20px;
-            margin: 10px;
             font-size: 16px;
             cursor: pointer;
-        }
-        #status {
-            margin-top: 20px;
-            color: green;
-        }
-        #error {
-            margin-top: 20px;
-            color: red;
-        }
-        #message {
-            margin-top: 20px;
-            word-wrap: break-word;
-        }
-        #signature {
-            margin-top: 20px;
-            word-wrap: break-word;
-        }
-        #instructions {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
         }
     </style>
 </head>
 <body>
-    <h2>LuckyU Wallet Verification</h2>
-    <p id="message">Message to sign: Loading...</p>
-    <button id="connectButton">Connect to MetaMask</button>
-    <button id="signTypedDataV4Button" disabled>Sign with MetaMask</button>
+    <h1>LuckyU Wallet Verification</h1>
+    <p id="message"></p>
     <p id="account">Account: Not connected</p>
-    <p id="status"></p>
-    <p id="error"></p>
+    <p id="status">Status: Waiting for connection...</p>
+    <button id="connectButton" onclick="connectWallet()">Connect Wallet</button>
+    <button id="signButton" onclick="signMessage()" disabled>Sign Message</button>
     <p id="signature"></p>
-    <div id="instructions"></div>
 
+    <!-- Load ethers.js from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" integrity="sha512-JlXfz0L5xEVgqo3Ki2uHIMzP7tH2odkQKk0Gq2aL3gQk6no1LJtX5lltM9oRdF3gL0R2t2sLLo8v7pR2qFw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
-        const connectButton = document.getElementById('connectButton');
-        const signTypedDataV4Button = document.getElementById('signTypedDataV4Button');
-        const accountDisplay = document.getElementById('account');
-        const statusDisplay = document.getElementById('status');
-        const errorDisplay = document.getElementById('error');
-        const messageDisplay = document.getElementById('message');
-        const signatureDisplay = document.getElementById('signature');
-        const instructionsDisplay = document.getElementById('instructions');
-
         let provider;
         let signer;
-        let userAddress;
-        let messageToSign;
+        let account;
 
         // Get the message from the URL query parameter
         const urlParams = new URLSearchParams(window.location.search);
-        messageToSign = urlParams.get('message') || 'Default message';
-        messageDisplay.textContent = `Message to sign: ${messageToSign}`;
+        const message = urlParams.get('message');
+        document.getElementById('message').innerText = `Message to sign: ${message || 'No message provided'}`;
 
-        // Connect to MetaMask
-        connectButton.addEventListener('click', async () => {
+        async function connectWallet() {
             try {
-                // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    throw new Error('MetaMask is not installed. Please install it to proceed.');
+                    document.getElementById('status').innerText = 'Status: Please install MetaMask!';
+                    return;
                 }
 
                 provider = new ethers.providers.Web3Provider(window.ethereum);
-                await provider.send('eth_requestAccounts', []);
+                await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
-                userAddress = await signer.getAddress();
+                account = await signer.getAddress();
 
-                accountDisplay.textContent = `Account: ${userAddress}`;
-                signTypedDataV4Button.disabled = false;
-                connectButton.disabled = true;
-                statusDisplay.textContent = 'Connected to MetaMask!';
-                errorDisplay.textContent = '';
+                document.getElementById('account').innerText = `Account: ${account}`;
+                document.getElementById('status').innerText = 'Status: Connected!';
+                document.getElementById('signButton').disabled = false;
             } catch (error) {
-                errorDisplay.textContent = `Error: ${error.message}`;
-                statusDisplay.textContent = '';
+                console.error("Error connecting to wallet:", error);
+                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
             }
-        });
+        }
 
-        // Sign Typed Data with EIP-712 (eth_signTypedData_v4)
-        signTypedDataV4Button.addEventListener('click', async () => {
+        async function signMessage() {
+            if (!message) {
+                document.getElementById('status').innerText = 'Status: No message to sign!';
+                return;
+            }
+
             try {
-                // Clear previous messages
-                statusDisplay.textContent = '';
-                errorDisplay.textContent = '';
-                signatureDisplay.textContent = '';
-                instructionsDisplay.textContent = '';
-
-                // Define the EIP-712 domain separator
+                // Define the EIP-712 domain and types (must match bot.py)
                 const domain = {
                     name: 'LuckyU',
                     version: '1',
-                    chainId: await provider.getNetwork().then(net => net.chainId),
-                    verifyingContract: '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609' // Use your contract address
+                    chainId: 97, // BNB Chain Testnet
+                    verifyingContract: '0xYourLotteryContractAddress' // Replace with LOTTERY_CONTRACT_ADDRESS
                 };
-
-                // Define the types for the structured data
                 const types = {
                     WalletVerification: [
                         { name: 'message', type: 'string' },
                         { name: 'userAddress', type: 'address' }
                     ]
                 };
-
-                // Define the message to sign
-                const message = {
-                    message: messageToSign,
-                    userAddress: userAddress
+                const value = {
+                    message: message,
+                    userAddress: account
                 };
 
-                // Sign the typed data
-                const signature = await provider.send('eth_signTypedData_v4', [
-                    userAddress,
-                    JSON.stringify({
-                        domain,
-                        types,
-                        primaryType: 'WalletVerification',
-                        message
-                    })
-                ]);
-
-                // Verify the signature
-                const recoveredAddress = ethers.utils.verifyTypedData(
-                    domain,
-                    { WalletVerification: types.WalletVerification },
-                    message,
-                    signature
-                );
-
-                if (recoveredAddress.toLowerCase() === userAddress.toLowerCase()) {
-                    statusDisplay.textContent = 'Signature verified successfully!';
-                    signatureDisplay.textContent = `Signature: ${signature}`;
-                    instructionsDisplay.innerHTML = `
-                        <strong>Next Steps:</strong><br>
-                        1. Copy the signature above.<br>
-                        2. Return to the LuckyU Telegram bot.<br>
-                        3. Paste the signature in the chat to complete wallet verification.<br>
-                        <a href="https://t.me/yourBotUsername">Click here to return to the bot</a>
-                    `;
-                } else {
-                    errorDisplay.textContent = `Signature verification failed! Recovered: ${recoveredAddress}, Expected: ${userAddress}`;
-                }
+                const signature = await signer._signTypedData(domain, types, value);
+                document.getElementById('signature').innerText = `Signature: ${signature}`;
+                document.getElementById('status').innerText = 'Status: Message signed! Copy the signature above and paste it in Telegram.';
             } catch (error) {
-                errorDisplay.textContent = `Error: ${error.message}`;
-                statusDisplay.textContent = '';
+                console.error("Error signing message:", error);
+                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
             }
-        });
-
-        // Handle chain changes
-        if (window.ethereum) {
-            window.ethereum.on('chainChanged', () => {
-                window.location.reload();
-            });
-            window.ethereum.on('accountsChanged', (accounts) => {
-                if (accounts.length === 0) {
-                    accountDisplay.textContent = 'Account: Not connected';
-                    signTypedDataV4Button.disabled = true;
-                    connectButton.disabled = false;
-                    statusDisplay.textContent = '';
-                    errorDisplay.textContent = 'Please connect to MetaMask.';
-                    signatureDisplay.textContent = '';
-                    instructionsDisplay.textContent = '';
-                }
-            });
         }
     </script>
 </body>
