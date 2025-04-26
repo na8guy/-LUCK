@@ -89,13 +89,15 @@
         const message = urlParams.get('message') || 'Link your wallet to the Lottery Bot';
         const userIdMatch = message.match(/Link your wallet to the Lottery Bot/) ? urlParams.get('userId') : null;
         const userId = userIdMatch || 'Unknown';
+        const messageHash = urlParams.get('messageHash') || 'Not provided';
+        const nonce = urlParams.get('nonce') || 'Not provided';
 
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
 
         // Contract details
-        const LOTTERY_CONTRACT_ADDRESS = '0x36a5699fe5d5a4ded79f041b444cfacdabf4e609'; // Replace with actual address
-        const LUCK_TOKEN_ADDRESS = '0x...'; // Replace with actual $LUCK token address
+        const LOTTERY_CONTRACT_ADDRESS = '0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee';
+        const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE'; // Replace with actual $LUCK token address
         const LOTTERY_CONTRACT_ABI = [
             {
                 "inputs": [
@@ -132,7 +134,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    alert('Please install MetaMask to proceed!');
+                    alert('Please install MetaMask to proceed! or Copy link and Paste in Metamask Browser to Proceed');
                     return;
                 }
 
