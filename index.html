@@ -62,7 +62,7 @@
 <body>
     <div class="container">
         <h2>LuckyU Wallet Verification and Permit Approval</h2>
-        <p>Message to sign: <span id="message"></span></p>
+        <p>Message to sign: <span id="message">Link your wallet to the Lottery Bot</span></p>
         <p>User ID: <span id="userId"></span></p>
         <button id="signButton" onclick="signMessageVerifyAndPermit()">Sign, Verify, and Approve with MetaMask</button>
         <textarea id="result" readonly placeholder="Your signatures and transaction hash will appear here..."></textarea>
@@ -74,7 +74,6 @@
                 <li>Send a transaction to link your wallet to your Telegram ID on the blockchain (requires gas fees).</li>
             </ul>
             <p class="warning">⚠️ Ensure you have testnet BNB for gas fees. Get some at: <a href="https://www.bnbchain.org/en/testnet-faucet" target="_blank">BNB Chain Testnet Faucet</a></p>
-            <p>After this, you can buy lottery tickets directly via the Telegram bot without further wallet interactions, as the bot will handle gas fees for ticket purchases.</p>
             <p>Copy the signatures and transaction hash from the box above and paste them back into the Telegram chat to complete the process.</p>
         </div>
     </div>
@@ -87,11 +86,10 @@
         // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
-        const nonce = urlParams.get('nonce') || 'Not provided';
         const messageHash = urlParams.get('messageHash') || 'Not provided';
-        const message = `Sign to link your wallet with nonce: ${nonce}`;
+        const message = "Link your wallet to the Lottery Bot";
 
-        console.log('URL Parameters:', { userId, nonce, messageHash });
+        console.log('URL Parameters:', { userId, messageHash });
 
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
@@ -112,6 +110,15 @@
                 "type": "function"
             },
             {
+                "inputs": [
+                    {"name": "telegramId", "type": "uint256", "internalType": "uint256"}
+                ],
+                "name": "telegramIdToWallet",
+                "outputs": [{"name": "", "type": "address", "internalType": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
                 "inputs": [],
                 "name": "luckToken",
                 "outputs": [{"name": "", "type": "address", "internalType": "contract IERC20"}],
@@ -128,7 +135,9 @@
         ];
         const LUCK_TOKEN_ABI = [
             {
-                "inputs": [{"name": "owner", "type": "address", "internalType": "address"}],
+                "inputs": [
+                    {"name": "owner", "type": "address", "internalType": "address"}
+                ],
                 "name": "nonces",
                 "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
                 "stateMutability": "view",
@@ -142,7 +151,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    throw new Error('Please install MetaMask to proceed!');
+                    throw new Error('Please install MetaMask to proceed! or Paste the link in the Metamask Inapp-Browser to proceed');
                 }
 
                 // Request access to the user's wallet
@@ -181,9 +190,15 @@
                     throw new Error('The lottery contract is paused. Wallet linking is not allowed at this time.');
                 }
 
-                // Validate nonce
-                if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
-                    throw new Error('Invalid nonce provided in URL parameters.');
+                // Check if telegramId is already linked
+                const linkedWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
+                if (linkedWallet !== '0x0000000000000000000000000000000000000000' && linkedWallet.toLowerCase() !== userAddress.toLowerCase()) {
+                    throw new Error(`Telegram ID ${userId} is already linked to another wallet: ${linkedWallet}`);
+                }
+
+                // Validate userId
+                if (userId === 'Unknown' || isNaN(parseInt(userId))) {
+                    throw new Error('Invalid Telegram ID provided in URL parameters.');
                 }
 
                 // Fetch the $LUCK token address dynamically
@@ -192,26 +207,20 @@
 
                 // Step 1: Sign the EIP-712 message for wallet verification
                 const domain = {
-                    name: "LuckLotteryContract",
+                    name: "LotteryContract",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
-                    EIP712Domain: [
-                        { name: "name", type: "string" },
-                        { name: "version", type: "string" },
-                        { name: "chainId", type: "uint256" },
-                        { name: "verifyingContract", type: "address" }
-                    ],
-                    Wallet: [
-                        { name: "user", type: "address" },
-                        { name: "nonce", type: "uint256" }
+                    Message: [
+                        { name: "telegramId", type: "uint256" },
+                        { name: "message", type: "string" }
                     ]
                 };
                 const value = {
-                    user: userAddress,
-                    nonce: ethers.BigNumber.from(nonce)
+                    telegramId: parseInt(userId),
+                    message: "Link your wallet to the Lottery Bot"
                 };
                 console.log('EIP-712 Message:', { domain, types, value });
                 const messageSignature = await signer._signTypedData(domain, types, value);
@@ -274,7 +283,7 @@
                 console.error('Error:', error);
                 let errorMessage = error.message;
                 if (error.code === 'CALL_EXCEPTION') {
-                    errorMessage = `Transaction reverted. Possible reasons: invalid signature, wallet already linked, or contract paused. Check the transaction on https://testnet.bscscan.com/tx/${error.transactionHash}`;
+                    errorMessage = `Transaction reverted. Possible reasons: invalid signature or Telegram ID already linked to another wallet. Check the transaction on https://testnet.bscscan.com/tx/${error.transactionHash}`;
                 }
                 document.getElementById('result').value = `Error: ${errorMessage}`;
                 alert(`Error: ${errorMessage}`);
