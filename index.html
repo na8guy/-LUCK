@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification and Permit Approval</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
-    integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
-    crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
+            integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
+            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
 
     <style>
         body {
@@ -84,13 +84,12 @@
             console.log("ethers loaded:", typeof ethers);
         }
 
-        // Extract message and user ID from URL query parameters
+        // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const message = urlParams.get('message') || 'Link your wallet to the Lottery Bot';
-        const userIdMatch = message.match(/Link your wallet to the Lottery Bot/) ? urlParams.get('userId') : null;
-        const userId = userIdMatch || 'Unknown';
-        const messageHash = urlParams.get('messageHash') || 'Not provided';
+        const userId = urlParams.get('userId') || 'Unknown';
         const nonce = urlParams.get('nonce') || 'Not provided';
+        const messageHash = urlParams.get('messageHash') || 'Not provided';
+        const message = `Sign to link your wallet with nonce: ${nonce}`;
 
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
@@ -134,8 +133,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    alert('Please install MetaMask to proceed!');
-                    return;
+                    throw new Error('Please install MetaMask to proceed!');
                 }
 
                 // Request access to the user's wallet
@@ -167,6 +165,11 @@
                     }
                 }
 
+                // Validate nonce
+                if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
+                    throw new Error('Invalid nonce provided in URL parameters.');
+                }
+
                 // Fetch the $LUCK token address dynamically from the lottery contract
                 const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
                 LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
@@ -180,17 +183,21 @@
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
-                    Message: [
-                        { name: "telegramId", type: "uint256" },
-                        { name: "message", type: "string" }
+                    EIP712Domain: [
+                        { name: "name", type: "string" },
+                        { name: "version", type: "string" },
+                        { name: "chainId", type: "uint256" },
+                        { name: "verifyingContract", type: "address" }
+                    ],
+                    Wallet: [
+                        { name: "user", type: "address" },
+                        { name: "nonce", type: "uint256" }
                     ]
                 };
                 const value = {
-                    telegramId: parseInt(userId),
-                    message: "Link your wallet to the Lottery Bot"
+                    user: userAddress,
+                    nonce: ethers.BigNumber.from(nonce)
                 };
-                const messageHash = ethers.utils._TypedDataEncoder.hash(domain, types, value);
-                console.log('Web app message hash:', messageHash);
                 const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
 
@@ -199,7 +206,7 @@
                 const permitNonce = await luckTokenContract.nonces(userAddress);
                 const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
                 const permitDomain = {
-                    name: "LuckyU",
+                    name: "Luckie",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LUCK_TOKEN_ADDRESS
@@ -249,8 +256,12 @@
 
             } catch (error) {
                 console.error('Error:', error);
-                document.getElementById('result').value = `Error: ${error.message}`;
-                alert(`Error: ${error.message}`);
+                let errorMessage = error.message;
+                if (error.code === 'CALL_EXCEPTION') {
+                    errorMessage = 'Transaction reverted. Please check your inputs or contract state. Ensure you have sufficient BNB for gas fees.';
+                }
+                document.getElementById('result').value = `Error: ${errorMessage}`;
+                alert(`Error: ${errorMessage}`);
             }
         }
     </script>
