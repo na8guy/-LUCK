@@ -230,7 +230,7 @@
                 // Step 3: Send the verifyWallet transaction
                 const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
                 const tx = await contract.verifyWallet(parseInt(userId), userAddress, messageSignature, {
-                    gasLimit: 150000,
+                    gasLimit: 300000,
                     value: 0
                 });
                 console.log('Transaction sent:', tx.hash);
