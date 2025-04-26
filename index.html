@@ -91,6 +91,8 @@
         const messageHash = urlParams.get('messageHash') || 'Not provided';
         const message = `Sign to link your wallet with nonce: ${nonce}`;
 
+        console.log('URL Parameters:', { userId, nonce, messageHash });
+
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
 
@@ -113,6 +115,13 @@
                 "inputs": [],
                 "name": "luckToken",
                 "outputs": [{"name": "", "type": "address", "internalType": "contract IERC20"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "paused",
+                "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
                 "stateMutability": "view",
                 "type": "function"
             }
@@ -165,13 +174,19 @@
                     }
                 }
 
+                // Check if contract is paused
+                const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                const isPaused = await lotteryContract.paused();
+                if (isPaused) {
+                    throw new Error('The lottery contract is paused. Wallet linking is not allowed at this time.');
+                }
+
                 // Validate nonce
                 if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
                     throw new Error('Invalid nonce provided in URL parameters.');
                 }
 
-                // Fetch the $LUCK token address dynamically from the lottery contract
-                const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                // Fetch the $LUCK token address dynamically
                 LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
                 console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
@@ -198,13 +213,14 @@
                     user: userAddress,
                     nonce: ethers.BigNumber.from(nonce)
                 };
+                console.log('EIP-712 Message:', { domain, types, value });
                 const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
 
                 // Step 2: Sign the EIP-712 permit for $LUCK token approval
                 const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
                 const permitNonce = await luckTokenContract.nonces(userAddress);
-                const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
+                const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes
                 const permitDomain = {
                     name: "Luckie",
                     version: "1",
@@ -230,7 +246,7 @@
                 const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
                 console.log('Permit Signature:', permitSignature);
 
-                // Split permit signature into v, r, s
+                // Split permit signature
                 const permitSig = ethers.utils.splitSignature(permitSignature);
                 const v = permitSig.v;
                 const r = permitSig.r;
@@ -258,7 +274,7 @@
                 console.error('Error:', error);
                 let errorMessage = error.message;
                 if (error.code === 'CALL_EXCEPTION') {
-                    errorMessage = 'Transaction reverted. Please check your inputs or contract state. Ensure you have sufficient BNB for gas fees.';
+                    errorMessage = `Transaction reverted. Possible reasons: invalid signature, wallet already linked, or contract paused. Check the transaction on https://testnet.bscscan.com/tx/${error.transactionHash}`;
                 }
                 document.getElementById('result').value = `Error: ${errorMessage}`;
                 alert(`Error: ${errorMessage}`);
