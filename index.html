@@ -96,8 +96,8 @@
         document.getElementById('userId').textContent = userId;
 
         // Contract details
-        const LOTTERY_CONTRACT_ADDRESS = '0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee';
-        const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE'; // Replace with actual $LUCK token address
+        const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
+        let LUCK_TOKEN_ADDRESS = null; // Will be fetched dynamically
         const LOTTERY_CONTRACT_ABI = [
             {
                 "inputs": [
@@ -134,7 +134,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    alert('Please install MetaMask to proceed! or Copy link and Paste in Metamask Browser to Proceed');
+                    alert('Please install MetaMask to proceed! or Copy the link and paste in Metamask Inapp-browser to proceed');
                     return;
                 }
 
@@ -166,6 +166,11 @@
                         throw switchError;
                     }
                 }
+
+                // Fetch the $LUCK token address dynamically from the lottery contract
+                const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
+                console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
                 // Step 1: Sign the EIP-712 message for wallet verification
                 const domain = {
