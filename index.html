@@ -86,9 +86,11 @@
         // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
+        const verifyMessageHash = urlParams.get('verifyMessageHash') || null;
+        const permitMessageHash = urlParams.get('permitMessageHash') || null;
         const message = "Link your wallet to the Lottery Bot";
 
-        console.log('URL Parameters:', { userId });
+        console.log('URL Parameters:', { userId, verifyMessageHash, permitMessageHash });
 
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
@@ -219,24 +221,24 @@
                 console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
                 // Step 1: Sign the EIP-712 message for wallet verification
-                const domain = {
+                const verifyDomain = {
                     name: "LotteryContract",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
-                const types = {
+                const verifyTypes = {
                     Message: [
                         { name: "telegramId", type: "uint256" },
                         { name: "message", type: "string" }
                     ]
                 };
-                const value = {
+                const verifyValue = {
                     telegramId: parseInt(userId),
                     message: "Link your wallet to the Lottery Bot"
                 };
-                console.log('Verification EIP-712 Message:', { domain, types, value });
-                const messageSignature = await signer._signTypedData(domain, types, value);
+                console.log('Verification EIP-712 Message:', { verifyDomain, verifyTypes, verifyValue });
+                const messageSignature = await signer._signTypedData(verifyDomain, verifyTypes, verifyValue);
                 console.log('Message Signature:', messageSignature);
 
                 // Step 2: Sign the EIP-712 permit for $LUCK token approval
