@@ -134,7 +134,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    alert('Please install MetaMask to proceed! or Paste the link into Metamask Inapp-Browser to proceed');
+                    alert('Please install MetaMask to proceed!');
                     return;
                 }
 
@@ -174,21 +174,23 @@
 
                 // Step 1: Sign the EIP-712 message for wallet verification
                 const domain = {
-                    name: "LuckLotteryContract",
+                    name: "LotteryContract",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
-                    Wallet: [
-                        { name: "user", type: "address" },
-                        { name: "nonce", type: "uint256" }
+                    Message: [
+                        { name: "telegramId", type: "uint256" },
+                        { name: "message", type: "string" }
                     ]
                 };
                 const value = {
-                    user: "0x0000000000000000000000000000000000000000",
-                    nonce: ethers.BigNumber.from(nonce)
+                    telegramId: parseInt(userId),
+                    message: "Link your wallet to the Lottery Bot"
                 };
+                const messageHash = ethers.utils._TypedDataEncoder.hash(domain, types, value);
+                console.log('Web app message hash:', messageHash);
                 const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
 
