@@ -3023,7 +3023,7 @@
                 const permitNonce = await luckTokenContract.nonces(userAddress);
                 const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
                 const permitDomain = {
-                    name: "Luckie",
+                    name: "LuckToken",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LUCK_TOKEN_ADDRESS
