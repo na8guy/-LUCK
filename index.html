@@ -79,23 +79,21 @@
     </div>
 
     <script>
-        function onEthersLoaded() {
-            console.log("ethers loaded:", typeof ethers);
-        }
-
-        // Extract parameters from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const userId = urlParams.get('userId') || 'Unknown';
-        const nonce = urlParams.get('nonce') || 'Not provided';
-        const message = `Sign to link your wallet with nonce: ${nonce}`;
-
-        document.getElementById('message').textContent = message;
-        document.getElementById('userId').textContent = userId;
-
-        // Contract details
-        const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
-        let LUCK_TOKEN_ADDRESS = null; // Will be fetched dynamically
-        const LOTTERY_CONTRACT_ABI = [
+      function onEthersLoaded() {
+          console.log("ethers loaded:", typeof ethers);
+      }
+  
+      const urlParams = new URLSearchParams(window.location.search);
+      const userId = urlParams.get('userId') || 'Unknown';
+      const nonce = urlParams.get('nonce') || 'Not provided';
+      const message = `Sign to link your wallet with nonce: ${nonce}`;
+  
+      document.getElementById('message').textContent = message;
+      document.getElementById('userId').textContent = userId;
+  
+      const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
+      let LUCK_TOKEN_ADDRESS = null;
+      const LOTTERY_CONTRACT_ABI = [
   {
     "type": "constructor",
     "inputs": [
@@ -1772,7 +1770,7 @@
     "stateMutability": "view"
   }
 ];
-        const LUCK_TOKEN_ABI = [
+      const LUCK_TOKEN_ABI = [
   {
     "type": "constructor",
     "inputs": [],
@@ -2935,149 +2933,186 @@
     "stateMutability": "nonpayable"
   }
 ];
-        const CHAIN_ID = 97; // BNB Chain Testnet
-        const MAX_ALLOWANCE = ethers.BigNumber.from("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"); // Max uint256
-
-        async function signMessageVerifyAndPermit() {
-            try {
-                // Check if MetaMask is installed
-                if (!window.ethereum) {
-                    throw new Error('Please install MetaMask to proceed!');
-                }
-
-                // Check if ethers is loaded
-                if (typeof ethers === 'undefined') {
-                    throw new Error('Ethers.js library failed to load. Please refresh the page or check your internet connection.');
-                }
-
-                // Request access to the user's wallet
-                await window.ethereum.request({ method: 'eth_requestAccounts' });
-                const provider = new ethers.providers.Web3Provider(window.ethereum);
-                const signer = provider.getSigner();
-                const userAddress = await signer.getAddress();
-
-                // Switch to BNB Chain Testnet
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
-                    });
-                } catch (switchError) {
-                    if (switchError.code === 4902) {
-                        await window.ethereum.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: `0x${CHAIN_ID.toString(16)}`,
-                                chainName: 'BNB Chain Testnet',
-                                rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545'],
-                                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                                blockExplorerUrls: ['https://testnet.bscscan.com']
-                            }],
-                        });
-                    } else {
-                        throw switchError;
-                    }
-                }
-
-                // Validate nonce
-                if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
-                    throw new Error('Invalid nonce provided in URL parameters.');
-                }
-
-                // Validate userId
-                if (!userId || isNaN(parseInt(userId))) {
-                    throw new Error('Invalid userId provided in URL parameters.');
-                }
-
-                // Fetch the $LUCK token address dynamically from the lottery contract
-                const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
-                console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
-
-                // Step 1: Sign the EIP-712 message for wallet verification
-                const domain = {
-                    name: "LuckLotteryContract",
-                    version: "1",
-                    chainId: CHAIN_ID,
-                    verifyingContract: LOTTERY_CONTRACT_ADDRESS
-                };
-                const types = {
-                    Wallet: [
-                        { name: "user", type: "address" },
-                        { name: "nonce", type: "uint256" }
-                    ]
-                };
-                const value = {
-                    user: userAddress,
-                    nonce: ethers.BigNumber.from(nonce)
-                };
-
-                const messageSignature = await signer._signTypedData(domain, types, value);
-                console.log('Message Signature:', messageSignature);
-
-                // Step 2: Sign the EIP-712 permit for $LUCK token approval
-                const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
-                const permitNonce = await luckTokenContract.nonces(userAddress);
-                const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
-                const permitDomain = {
-                    name: "LuckToken",
-                    version: "1",
-                    chainId: CHAIN_ID,
-                    verifyingContract: LUCK_TOKEN_ADDRESS
-                };
-                const permitTypes = {
-                    Permit: [
-                        { name: "owner", type: "address" },
-                        { name: "spender", type: "address" },
-                        { name: "value", type: "uint256" },
-                        { name: "nonce", type: "uint256" },
-                        { name: "deadline", type: "uint256" }
-                    ]
-                };
-                const permitValue = {
-                    owner: userAddress,
-                    spender: LOTTERY_CONTRACT_ADDRESS,
-                    value: MAX_ALLOWANCE,
-                    nonce: permitNonce,
-                    deadline: deadline
-                };
-                const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
-                console.log('Permit Signature:', permitSignature);
-
-                // Split permit signature into v, r, s
-                const permitSig = ethers.utils.splitSignature(permitSignature);
-                const v = permitSig.v;
-                const r = permitSig.r;
-                const s = permitSig.s;
-
-                // Step 3: Send the verifyWallet transaction
-                const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
-                const tx = await contract.verifyWallet(parseInt(userId), userAddress, messageSignature, {
-                    gasLimit: 300000,
-                    value: 0
-                });
-                console.log('Transaction sent:', tx.hash);
-
-                // Wait for the transaction to be mined
-                const receipt = await tx.wait();
-                console.log('Transaction confirmed:', receipt);
-
-                // Display the signatures and transaction hash
-                const result = `Message Signature: ${messageSignature}\nPermit Signature (v,r,s): ${v},${r},${s}\nTransaction Hash: ${tx.hash}`;
-                document.getElementById('result').value = result;
-
-                alert('Wallet verification and permit approval successful! Please copy the signatures and transaction hash above and paste them back into the Telegram chat.');
-
-            } catch (error) {
-                console.error('Error:', error);
-                let errorMessage = error.message;
-                if (error.code === 'CALL_EXCEPTION') {
-                    errorMessage = 'Transaction reverted. Please check your inputs or contract state. Ensure you have sufficient BNB for gas fees.';
-                }
-                document.getElementById('result').value = `Error: ${errorMessage}`;
-                alert(`Error: ${errorMessage}`);
-            }
-        }
-    </script>
+      const CHAIN_ID = 97;
+      const MAX_ALLOWANCE = ethers.BigNumber.from("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+  
+      async function signMessageVerifyAndPermit() {
+          try {
+              if (!window.ethereum) {
+                  throw new Error('Please install MetaMask to proceed!');
+              }
+              if (typeof ethers === 'undefined') {
+                  throw new Error('Ethers.js library failed to load.');
+              }
+  
+              await window.ethereum.request({ method: 'eth_requestAccounts' });
+              const provider = new ethers.providers.Web3Provider(window.ethereum);
+              const signer = provider.getSigner();
+              const userAddress = await signer.getAddress();
+  
+              const currentChainId = await provider.getNetwork().then(net => net.chainId);
+              console.log('Current chain ID:', currentChainId);
+              if (currentChainId !== CHAIN_ID) {
+                  throw new Error(`Please switch to BSC Testnet (chain ID 97). Current chain ID: ${currentChainId}`);
+              }
+  
+              try {
+                  await window.ethereum.request({
+                      method: 'wallet_switchEthereumChain',
+                      params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
+                  });
+              } catch (switchError) {
+                  if (switchError.code === 4902) {
+                      await window.ethereum.request({
+                          method: 'wallet_addEthereumChain',
+                          params: [{
+                              chainId: `0x${CHAIN_ID.toString(16)}`,
+                              chainName: 'BNB Chain Testnet',
+                              rpcUrls: ['https://rpc.ankr.com/bsc_testnet_chapel'],
+                              nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                              blockExplorerUrls: ['https://testnet.bscscan.com']
+                          }],
+                      });
+                  } else {
+                      throw switchError;
+                  }
+              }
+  
+              if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
+                  throw new Error('Invalid nonce provided in URL parameters.');
+              }
+              if (!userId || isNaN(parseInt(userId))) {
+                  throw new Error('Invalid userId provided in URL parameters.');
+              }
+  
+              const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+              LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
+              console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
+  
+              const isPaused = await lotteryContract.paused();
+              const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
+              const domainData = await lotteryContract.eip712Domain();
+              console.log('Contract paused:', isPaused);
+              console.log('Existing wallet for telegramId:', existingWallet);
+              console.log('Contract EIP712Domain:', domainData);
+  
+              const domain = {
+                  name: domainData[1],
+                  version: domainData[2],
+                  chainId: domainData[3],
+                  verifyingContract: domainData[4],
+                  salt: domainData[5] !== '0x0000000000000000000000000000000000000000000000000000000000000000' ? domainData[5] : undefined
+              };
+              const types = {
+                  Wallet: [
+                      { name: "user", type: "address" },
+                      { name: "nonce", type: "uint256" }
+                  ]
+              };
+              const value = {
+                  user: userAddress,
+                  nonce: ethers.BigNumber.from(nonce)
+              };
+              console.log('EIP-712 Domain:', domain);
+              console.log('EIP-712 Types:', types);
+              console.log('EIP-712 Value:', value);
+              console.log('Nonce:', nonce);
+              console.log('Parsed nonce:', ethers.BigNumber.from(nonce).toString());
+  
+              const messageSignature = await signer._signTypedData(domain, types, value);
+              console.log('Message Signature:', messageSignature);
+              console.log('Signature length:', messageSignature.length);
+  
+              const digest = ethers.utils._TypedDataEncoder.hash(domain, types, value);
+              const recoveredAddress = ethers.utils.recoverAddress(digest, messageSignature);
+              console.log('Recovered address:', recoveredAddress);
+              console.log('Expected address:', userAddress);
+  
+              const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
+              const permitNonce = await luckTokenContract.nonces(userAddress);
+              const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
+              const permitDomain = {
+                  name: "LuckToken",
+                  version: "1",
+                  chainId: CHAIN_ID,
+                  verifyingContract: LUCK_TOKEN_ADDRESS
+              };
+              const permitTypes = {
+                  Permit: [
+                      { name: "owner", type: "address" },
+                      { name: "spender", type: "address" },
+                      { name: "value", type: "uint256" },
+                      { name: "nonce", type: "uint256" },
+                      { name: "deadline", type: "uint256" }
+                  ]
+              };
+              const permitValue = {
+                  owner: userAddress,
+                  spender: LOTTERY_CONTRACT_ADDRESS,
+                  value: MAX_ALLOWANCE,
+                  nonce: permitNonce,
+                  deadline: deadline
+              };
+              const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
+              console.log('Permit Signature:', permitSignature);
+  
+              const permitSig = ethers.utils.splitSignature(permitSignature);
+              const v = permitSig.v;
+              const r = permitSig.r;
+              const s = permitSig.s;
+  
+              const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
+              console.log('Calling verifyWallet with:', {
+                  telegramId: parseInt(userId),
+                  user: userAddress,
+                  signature: messageSignature
+              });
+  
+              const callResult = await provider.call({
+                  to: LOTTERY_CONTRACT_ADDRESS,
+                  data: contract.interface.encodeFunctionData('verifyWallet', [parseInt(userId), userAddress, messageSignature])
+              }).catch(err => {
+                  console.error('Simulation error:', err);
+                  try {
+                      const decodedError = contract.interface.parseError(err.data);
+                      console.error('Decoded revert reason:', decodedError);
+                      return decodedError;
+                  } catch (decodeErr) {
+                      console.error('Failed to decode error:', decodeErr);
+                      return err;
+                  }
+              });
+              console.log('Simulation result:', callResult);
+  
+              let tx;
+              try {
+                  tx = await contract.verifyWallet(parseInt(userId), userAddress, messageSignature, {
+                      gasLimit: 500000,
+                      value: 0
+                  });
+                  console.log('Transaction sent:', tx.hash);
+              } catch (error) {
+                  console.error('Transaction failed:', error);
+                  if (tx) console.log('Failed transaction hash:', tx.hash);
+                  throw error;
+              }
+  
+              const receipt = await tx.wait();
+              console.log('Transaction confirmed:', receipt);
+  
+              const result = `Message Signature: ${messageSignature}\nPermit Signature (v,r,s): ${v},${r},${s}\nTransaction Hash: ${tx.hash}`;
+              document.getElementById('result').value = result;
+              alert('Wallet verification and permit approval successful! Please copy the signatures and transaction hash above and paste them back into the Telegram chat.');
+          } catch (error) {
+              console.error('Error:', error);
+              let errorMessage = error.message;
+              if (error.code === 'CALL_EXCEPTION') {
+                  errorMessage = `Transaction reverted: ${error.reason || 'Unknown reason'}. Data: ${error.data || 'N/A'}`;
+              }
+              document.getElementById('result').value = `Error: ${errorMessage}`;
+              alert(`Error: ${errorMessage}`);
+          }
+      }
+  </script>
 </body>
 </html>
