@@ -2994,7 +2994,26 @@
               const domainData = await lotteryContract.eip712Domain();
               console.log('Contract paused:', isPaused);
               console.log('Existing wallet for telegramId:', existingWallet);
-              console.log('Contract EIP712Domain:', domainData);
+              console.log('Raw domainData:', domainData);
+  
+              if (!domainData || domainData.length < 6) {
+                  throw new Error('Invalid eip712Domain response');
+              }
+              console.log('domainData fields:', {
+                  fields: domainData[0],
+                  name: domainData[1],
+                  version: domainData[2],
+                  chainId: domainData[3],
+                  verifyingContract: domainData[4],
+                  salt: domainData[5],
+                  extensions: domainData[6]
+              });
+              if (typeof domainData[3] !== 'number' || domainData[3] !== CHAIN_ID) {
+                  throw new Error(`Invalid chainId in eip712Domain: ${domainData[3]}`);
+              }
+              if (!ethers.utils.isAddress(domainData[4])) {
+                  throw new Error(`Invalid verifyingContract in eip712Domain: ${domainData[4]}`);
+              }
   
               const domain = {
                   name: domainData[1],
