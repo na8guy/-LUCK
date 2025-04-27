@@ -5,13 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification and Permit Approval</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" 
-    integrity="sha512-FDcVY+g7vc5CXANbrTSg1K5qLyriCsGDYCE02Li1tXEYdNQPvLPHNE+rT2Mjei8N7fZbe0WLhw27j2SrGRpdMg=="
-        crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
-  <!--  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.8.0/ethers.umd.min.js" 
-            integrity="sha512-C21HmUqeSZiTL3f66wq2C9hf846MbuGlR/QteoGqAMT1wnvGAq6J/tqq7LwQZ+NWDeBMH0lC5MTOfVMeaGvclA==" 
-            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>-->
-
-
+            integrity="sha512-FDcVY+g7vc5CXANbrTSg1K5qLyriCsGDYCE02Li1tXEYdNQPvLPHNE+rT2Mjei8N7fZbe0WLhw27j2SrGRpdMg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -91,11 +86,7 @@
         // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
-
-
-
         const nonce = urlParams.get('nonce') || 'Not provided';
-        const messageHash = urlParams.get('messageHash') || 'Not provided';
         const message = `Sign to link your wallet with nonce: ${nonce}`;
 
         document.getElementById('message').textContent = message;
@@ -2952,7 +2943,11 @@
                 // Check if MetaMask is installed
                 if (!window.ethereum) {
                     throw new Error('Please install MetaMask to proceed!');
+                }
 
+                // Check if ethers is loaded
+                if (typeof ethers === 'undefined') {
+                    throw new Error('Ethers.js library failed to load. Please refresh the page or check your internet connection.');
                 }
 
                 // Request access to the user's wallet
@@ -2989,6 +2984,11 @@
                     throw new Error('Invalid nonce provided in URL parameters.');
                 }
 
+                // Validate userId
+                if (!userId || isNaN(parseInt(userId))) {
+                    throw new Error('Invalid userId provided in URL parameters.');
+                }
+
                 // Fetch the $LUCK token address dynamically from the lottery contract
                 const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
                 LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
@@ -3002,12 +3002,6 @@
                     verifyingContract: LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
-                    EIP712Domain: [
-                        { name: "name", type: "string" },
-                        { name: "version", type: "string" },
-                        { name: "chainId", type: "uint256" },
-                        { name: "verifyingContract", type: "address" }
-                    ],
                     Wallet: [
                         { name: "user", type: "address" },
                         { name: "nonce", type: "uint256" }
@@ -3017,7 +3011,6 @@
                     user: userAddress,
                     nonce: ethers.BigNumber.from(nonce)
                 };
-
 
                 const messageSignature = await signer._signTypedData(domain, types, value);
                 console.log('Message Signature:', messageSignature);
@@ -3087,3 +3080,4 @@
         }
     </script>
 </body>
+</html>
