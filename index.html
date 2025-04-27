@@ -87,7 +87,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
         const nonce = urlParams.get('nonce') || 'Not provided';
-        const deadline = urlParams.get('deadline') || (Math.floor(Date.now() / 1000) + 20 * 60);
+        const deadline = Math.floor(Date.now() / 1000) + 30 * 60; // 30 minutes from now
         const message = `Sign to link your wallet with nonce: ${nonce}`;
 
         document.getElementById('message').textContent = message;
@@ -237,7 +237,7 @@
             {"name": "TaxesUpdated", "type": "event", "inputs": [{"name": "buyTax", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "sellTax", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
             {"name": "TradingEnabled", "type": "event", "inputs": [], "anonymous": false},
             {"name": "Transfer", "type": "event", "inputs": [{"name": "from", "type": "address", "indexed": true, "internalType": "address"}, {"name": "to", "type": "address", "indexed": true, "internalType": "address"}, {"name": "value", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
-            {"name": "TransferDebug", "type": "event", "inputs": [{"name": "sender", "type": "address", "indexed": false, "internalType": "address"}, {"name": "recipient", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "stage", "type": "string", "indexed": false, "internalType": "string"}], "anonymous": false},
+            {"name": "TransferDebug", "type": "event", "inputs": [{"name": "sender", "type": "address", "indexed": false, "internalType": "address"}, {"name": "recipient", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": "false", "internalType": "uint256"}, {"name": "stage", "type": "string", "indexed": false, "internalType": "string"}], "anonymous": false},
             {"name": "DOMAIN_SEPARATOR", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "bytes32", "internalType": "bytes32"}], "stateMutability": "view"},
             {"name": "MAX_TX_AMOUNT", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}], "stateMutability": "view"},
             {"name": "MAX_WALLET_AMOUNT", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}], "stateMutability": "view"},
@@ -343,7 +343,6 @@
                 console.log('Contract paused:', isPaused);
                 console.log('Existing wallet for telegramId:', existingWallet);
 
-                // Check if userAddress matches existingWallet (if linked)
                 if (existingWallet !== '0x0000000000000000000000000000000000000000' && 
                     existingWallet.toLowerCase() !== userAddress.toLowerCase()) {
                     throw new Error(`Selected wallet (${userAddress}) does not match the linked wallet (${existingWallet}) for Telegram ID ${userId}. Please switch to the correct wallet in MetaMask.`);
@@ -386,7 +385,7 @@
                 const domain = {
                     name: domainData[1] || "LuckLotteryContract",
                     version: domainData[2] || "1",
-                    chainId: chainIdValue,
+                    chainId: chainId: chainIdValue,
                     verifyingContract: ethers.utils.isAddress(domainData[4]) ? domainData[4] : LOTTERY_CONTRACT_ADDRESS,
                     salt: domainData[5] && ethers.utils.isHexString(domainData[5], 32) ? domainData[5] : undefined
                 };
@@ -462,7 +461,7 @@
                 const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
                 const permitNonce = await luckTokenContract.nonces(userAddress);
                 const permitDomain = {
-                    name: "LuckToken",
+                    name: "Luckie", // Updated to match contract's ERC20Permit name
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LUCK_TOKEN_ADDRESS
@@ -481,10 +480,9 @@
                     spender: LOTTERY_CONTRACT_ADDRESS,
                     value: MAX_ALLOWANCE,
                     nonce: permitNonce,
-                    deadline: parseInt(deadline)
+                    deadline: deadline
                 };
 
-                // Log permit EIP-712 data
                 console.log('Permit EIP-712 Data:', {
                     domain: permitDomain,
                     types: permitTypes,
@@ -499,13 +497,12 @@
                 const r = permitSig.r;
                 const s = permitSig.s;
 
-                // Simulate permit call
                 const luckTokenWithSigner = luckTokenContract.connect(signer);
                 console.log('Simulating permit call with:', {
                     owner: userAddress,
                     spender: LOTTERY_CONTRACT_ADDRESS,
                     value: MAX_ALLOWANCE.toString(),
-                    deadline: parseInt(deadline),
+                    deadline: deadline,
                     v,
                     r,
                     s
@@ -516,7 +513,7 @@
                         userAddress,
                         LOTTERY_CONTRACT_ADDRESS,
                         MAX_ALLOWANCE,
-                        parseInt(deadline),
+                        deadline,
                         v,
                         r,
                         s
@@ -550,3 +547,4 @@
     </script>
 </body>
 </html>
+```
