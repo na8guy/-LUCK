@@ -2979,12 +2979,22 @@
             }
         }
 
-        if (nonce === 'Not provided' || isNaN(parseInt(nonce))) {
-            throw new Error('Invalid nonce provided in URL parameters.');
-        }
+        // Parse URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+        const nonce = urlParams.get('nonce');
+        const deadline = parseInt(urlParams.get('deadline')); // Use deadline from URL
+
         if (!userId || isNaN(parseInt(userId))) {
             throw new Error('Invalid userId provided in URL parameters.');
         }
+        if (!nonce || isNaN(parseInt(nonce))) {
+            throw new Error('Invalid nonce provided in URL parameters.');
+        }
+        if (!deadline || isNaN(deadline)) {
+            throw new Error('Invalid deadline provided in URL parameters.');
+        }
+        console.log('URL Parameters:', { userId, nonce, deadline });
 
         const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
         console.log('Using $LUCK token address:', LUCK_TOKEN_ADDRESS);
@@ -3101,7 +3111,7 @@
 
         const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
         const permitNonce = await luckTokenContract.nonces(userAddress);
-        const permitDeadline = Math.floor(Date.now() / 1000) + 30 * 60; // 30 minutes from now
+        const permitDeadline = deadline; // Use deadline from URL
         const permitDomain = {
             name: "Luckie",
             version: "1",
