@@ -86,6 +86,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId') || 'Unknown';
         const nonce = urlParams.get('nonce') || 'Not provided';
+        const deadline = urlParams.get('deadline') || (Math.floor(Date.now() / 1000) + 20 * 60);
         const message = `Sign to link your wallet with nonce: ${nonce}`;
 
         document.getElementById('message').textContent = message;
@@ -226,7 +227,7 @@
             {"name": "ReentrancyGuardReentrantCall", "type": "error", "inputs": []},
             {"name": "StringTooLong", "type": "error", "inputs": [{"name": "str", "type": "string", "internalType": "string"}]},
             {"name": "Approval", "type": "event", "inputs": [{"name": "owner", "type": "address", "indexed": true, "internalType": "address"}, {"name": "spender", "type": "address", "indexed": true, "internalType": "address"}, {"name": "value", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
-            {"name": "ConstructorDebug", "type": "event", "inputs": [{"name": "message", "type": "string", "indexed": false, "internalType": "string"}, {"name": "account", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
+            {"name": "ConstructorDebug", "type": "event", "inputs": [{"name": "message", "type": "string", "indexed": "false", "internalType": "string"}, {"name": "account", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
             {"name": "DistributionContractSet", "type": "event", "inputs": [{"name": "distributionContract", "type": "address", "indexed": false, "internalType": "address"}], "anonymous": false},
             {"name": "EIP712DomainChanged", "type": "event", "inputs": [], "anonymous": false},
             {"name": "LiquidityAdded", "type": "event", "inputs": [{"name": "tokenAmount", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "bnbAmount", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
@@ -339,9 +340,16 @@
 
                 const isPaused = await lotteryContract.paused();
                 const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
-                const domainData = await lotteryContract.eip712Domain();
                 console.log('Contract paused:', isPaused);
                 console.log('Existing wallet for telegramId:', existingWallet);
+
+                // Check if userAddress matches existingWallet (if linked)
+                if (existingWallet !== '0x0000000000000000000000000000000000000000' && 
+                    existingWallet.toLowerCase() !== userAddress.toLowerCase()) {
+                    throw new Error(`Selected wallet (${userAddress}) does not match the linked wallet (${existingWallet}) for Telegram ID ${userId}. Please switch to the correct wallet in MetaMask.`);
+                }
+
+                const domainData = await lotteryContract.eip712Domain();
                 console.log('Raw domainData:', domainData);
                 console.log('Raw domainData (stringified):', JSON.stringify(domainData));
 
@@ -402,6 +410,7 @@
                 let tx = null;
                 if (existingWallet.toLowerCase() === userAddress.toLowerCase()) {
                     console.log('Wallet already linked, skipping verifyWallet');
+                    messageSignature = 'Skipped (wallet already linked)';
                 } else {
                     messageSignature = await signer._signTypedData(domain, types, value);
                     console.log('Message Signature:', messageSignature);
@@ -452,7 +461,6 @@
 
                 const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
                 const permitNonce = await luckTokenContract.nonces(userAddress);
-                const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
                 const permitDomain = {
                     name: "LuckToken",
                     version: "1",
@@ -473,8 +481,16 @@
                     spender: LOTTERY_CONTRACT_ADDRESS,
                     value: MAX_ALLOWANCE,
                     nonce: permitNonce,
-                    deadline: deadline
+                    deadline: parseInt(deadline)
                 };
+
+                // Log permit EIP-712 data
+                console.log('Permit EIP-712 Data:', {
+                    domain: permitDomain,
+                    types: permitTypes,
+                    value: permitValue
+                });
+
                 const permitSignature = await signer._signTypedData(permitDomain, permitTypes, permitValue);
                 console.log('Permit Signature:', permitSignature);
 
