@@ -6,7 +6,7 @@
     <title>LuckyU Wallet Verification and Permit Approval</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" 
             integrity="sha512-FDcVY+g7vc5CXANbrTSg1K5qLyriCsGDYCE02Li1tXEYdNQPvLPHNE+rT2Mjei8N7fZbe0WLhw27j2SrGRpdMg=="
-            crossorigin="anonymous" referrerpolicy="no-referrer" onload="onEthersLoaded()"></script>
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -79,8 +79,11 @@
     </div>
 
     <script>
-        function onEthersLoaded() {
-            console.log("ethers loaded:", typeof ethers);
+        // Check if ethers.js loaded correctly
+        if (typeof ethers === 'undefined') {
+            console.error('Ethers.js failed to load. Please check the script source.');
+            document.getElementById('result').value = 'Error: Ethers.js failed to load.';
+            throw new Error('Ethers.js not loaded');
         }
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -236,7 +239,7 @@
             {"name": "TaxesUpdated", "type": "event", "inputs": [{"name": "buyTax", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "sellTax", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
             {"name": "TradingEnabled", "type": "event", "inputs": [], "anonymous": false},
             {"name": "Transfer", "type": "event", "inputs": [{"name": "from", "type": "address", "indexed": true, "internalType": "address"}, {"name": "to", "type": "address", "indexed": true, "internalType": "address"}, {"name": "value", "type": "uint256", "indexed": false, "internalType": "uint256"}], "anonymous": false},
-            {"name": "TransferDebug", "type": "event", "inputs": [{"name": "sender", "type": "address", "indexed": false, "internalType": "address"}, {"name": "recipient", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": "false", "internalType": "uint256"}, {"name": "stage", "type": "string", "indexed": false, "internalType": "string"}], "anonymous": false},
+            {"name": "TransferDebug", "type": "event", "inputs": [{"name": "sender", "type": "address", "indexed": false, "internalType": "address"}, {"name": "recipient", "type": "address", "indexed": false, "internalType": "address"}, {"name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256"}, {"name": "stage", "type": "string", "indexed": false, "internalType": "string"}], "anonymous": false},
             {"name": "DOMAIN_SEPARATOR", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "bytes32", "internalType": "bytes32"}], "stateMutability": "view"},
             {"name": "MAX_TX_AMOUNT", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}], "stateMutability": "view"},
             {"name": "MAX_WALLET_AMOUNT", "type": "function", "inputs": [], "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}], "stateMutability": "view"},
@@ -290,9 +293,6 @@
                 if (!window.ethereum) {
                     throw new Error('Please install MetaMask to proceed!');
                 }
-                if (typeof ethers === 'undefined') {
-                    throw new Error('Ethers.js library failed to load.');
-                }
 
                 await window.ethereum.request({ method: 'eth_requestAccounts' });
                 const provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -335,7 +335,7 @@
                 }
 
                 const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                console.log('Using hardcoded $LUCK token address:', LUCK_TOKEN_ADDRESS);
+                console.log('Using $LUCK token address:', LUCK_TOKEN_ADDRESS);
 
                 const isPaused = await lotteryContract.paused();
                 const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
@@ -349,7 +349,6 @@
 
                 const domainData = await lotteryContract.eip712Domain();
                 console.log('Raw domainData:', domainData);
-                console.log('Raw domainData (stringified):', JSON.stringify(domainData));
 
                 if (!domainData || domainData.length < 6) {
                     throw new Error('Invalid eip712Domain response');
@@ -357,15 +356,10 @@
                 console.log('domainData fields:', {
                     fields: domainData[0],
                     name: domainData[1],
-                    nameType: typeof domainData[1],
                     version: domainData[2],
-                    versionType: typeof domainData[2],
                     chainId: domainData[3],
-                    chainIdType: typeof domainData[3],
                     verifyingContract: domainData[4],
-                    verifyingContractType: typeof domainData[4],
                     salt: domainData[5],
-                    saltType: typeof domainData[5],
                     extensions: domainData[6]
                 });
                 if (!domainData[1]) throw new Error(`Invalid name in eip712Domain: ${domainData[1]}`);
@@ -384,9 +378,8 @@
                 const domain = {
                     name: domainData[1] || "LuckLotteryContract",
                     version: domainData[2] || "1",
-                    chainId: chainId: chainIdValue,
-                    verifyingContract: ethers.utils.isAddress(domainData[4]) ? domainData[4] : LOTTERY_CONTRACT_ADDRESS,
-                    salt: domainData[5] && ethers.utils.isHexString(domainData[5], 32) ? domainData[5] : undefined
+                    chainId: chainIdValue,
+                    verifyingContract: ethers.utils.isAddress(domainData[4]) ? domainData[4] : LOTTERY_CONTRACT_ADDRESS
                 };
                 const types = {
                     Wallet: [
@@ -401,8 +394,6 @@
                 console.log('EIP-712 Domain:', domain);
                 console.log('EIP-712 Types:', types);
                 console.log('EIP-712 Value:', value);
-                console.log('Nonce:', nonce);
-                console.log('Parsed nonce:', ethers.BigNumber.from(nonce).toString());
 
                 let messageSignature = null;
                 let tx = null;
@@ -412,7 +403,6 @@
                 } else {
                     messageSignature = await signer._signTypedData(domain, types, value);
                     console.log('Message Signature:', messageSignature);
-                    console.log('Signature length:', messageSignature.length);
 
                     const digest = ethers.utils._TypedDataEncoder.hash(domain, types, value);
                     const recoveredAddress = ethers.utils.recoverAddress(digest, messageSignature);
@@ -460,7 +450,7 @@
                 const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
                 const permitNonce = await luckTokenContract.nonces(userAddress);
                 const permitDomain = {
-                    name: "Luckie", // Updated to match contract's ERC20Permit name
+                    name: "Luckie",
                     version: "1",
                     chainId: CHAIN_ID,
                     verifyingContract: LUCK_TOKEN_ADDRESS
