@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LuckyU Wallet Verification and Permit Approval</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js" 
+            integrity="sha512-dj/EbePKIJrkhHMePgJ6ACP0v5whCZi+A8ot7WP+L0a3sPafqqWRiRhBBlGprs5hs5JjOYuTDlOic+qKc/s3mw=="
+            crossorigin="anonymous"></script>
+    <script src="/ethers.umd.min.js" 
+            integrity="sha512-dj/EbePKIJrkhHMePgJ6ACP0v5whCZi+A8ot7WP+L0a3sPafqqWRiRhBBlGprs5hs5JjOYuTDlOic+qKc/s3mw=="
+            onerror="console.error('Local ethers.js failed to load');"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            resize: none;
+        }
+        .info {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+        .warning {
+            color: #d9534f;
+            font-weight: bold;
+        }
+        #error {
+            color: #d9534f;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>LuckyU Wallet Verification and Permit Approval</h2>
+        <p>Message to sign: <span id="message">Link your wallet to the Lottery Bot</span></p>
+        <p>User ID: <span id="userId">Loading...</span></p>
+        <button id="connectButton" onclick="connectWallet()">Connect MetaMask</button>
+        <button id="signButton" onclick="signMessageVerifyAndPermit()" style="display: none;">Sign, Verify, and Approve with MetaMask</button>
+        <textarea id="result" readonly placeholder="Your signatures and transaction hash will appear here..."></textarea>
+        <p id="error"></p>
+        <div class="info">
+            <p><strong>Note:</strong> By clicking "Sign, Verify, and Approve with MetaMask", you will:</p>
+            <ul>
+                <li>Sign a message to prove you own this wallet (no gas fees).</li>
+                <li>Sign a permit to allow the lottery contract to spend $LUCK tokens on your behalf (no gas fees).</li>
+                <li>Send a transaction to link your wallet to your Telegram ID on the blockchain (requires gas fees).</li>
+            </ul>
+            <p class="warning">⚠️ Ensure you have testnet BNB for gas fees. Get some at: <a href="https://www.bnbchain.org/en/testnet-faucet" target="_blank">BNB Chain Testnet Faucet</a></p>
+            <p>After this, you can buy lottery tickets directly via the Telegram bot without further wallet interactions, as the bot will handle gas fees for ticket purchases.</p>
+            <p>Copy the signatures and transaction hash from the box above and paste them back into the Telegram chat to complete the process.</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize userId immediately
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const userId = urlParams.get('userId');
+            document.getElementById('userId').textContent = userId && !isNaN(parseInt(userId)) ? userId : 'Invalid User ID';
+        });
+
+        // Check if ethers.js loaded
+        if (typeof ethers === 'undefined') {
+            console.error('Ethers.js failed to load from both CDN and local sources.');
+            document.getElementById('error').innerText = 'Error: Failed to load required libraries. Please check your internet connection or contact support.';
+            throw new Error('Ethers.js not loaded');
+        }
+
+        // Log ethers functions for debugging
+        console.log('Ethers version:', ethers.version);
+        console.log('Ethers functions:', Object.keys(ethers));
+
+        // Initialize constants
+        const LOTTERY_CONTRACT_ADDRESS = '0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359';
+        const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE';
+        const CHAIN_ID = 97;
+        let MAX_ALLOWANCE;
+        try {
+            MAX_ALLOWANCE = ethers.parseUnits("115792089237316195423570985008687907853269984665640564039457584007913129639935", 0);
+        } catch (e) {
+            console.error('Failed to initialize MAX_ALLOWANCE:', e);
+            document.getElementById('error').innerText = 'Error: Failed to initialize required values. Please refresh the page.';
+            throw e;
+        }
+        const LOTTERY_CONTRACT_ABI = [
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "telegramId", "type": "uint256"},
+                    {"internalType": "address", "name": "user", "type": "address"},
+                    {"internalType": "bytes", "name": "signature", "type": "bytes"}
+                ],
+                "name": "verifyWallet",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "", "type": "uint256"}
+                ],
+                "name": "telegramIdToWallet",
+                "outputs": [
+                    {"internalType": "address", "name": "", "type": "address"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "eip712Domain",
+                "outputs": [
+                    {"internalType": "bytes1", "name": "fields", "type": "bytes1"},
+                    {"internalType": "string", "name": "name", "type": "string"},
+                    {"internalType": "string", "name": "version", "type": "string"},
+                    {"internalType": "uint256", "name": "chainId", "type": "uint256"},
+                    {"internalType": "address", "name": "verifyingContract", "type": "address"},
+                    {"internalType": "bytes32", "name": "salt", "type": "bytes32"},
+                    {"internalType": "uint256[]", "name": "extensions", "type": "uint256[]"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "paused",
+                "outputs": [
+                    {"internalType": "bool", "name": "", "type": "bool"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+        const LUCK_TOKEN_ABI = [
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "owner", "type": "address"}
+                ],
+                "name": "nonces",
+                "outputs": [
+                    {"internalType": "uint256", "name": "", "type": "uint256"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "owner", "type": "address"},
+                    {"internalType": "address", "name": "spender", "type": "address"},
+                    {"internalType": "uint256", "name": "value", "type": "uint256"},
+                    {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+                    {"internalType": "uint8", "name": "v", "type": "uint8"},
+                    {"internalType": "bytes32", "name": "r", "type": "bytes32"},
+                    {"internalType": "bytes32", "name": "s", "type": "bytes32"}
+                ],
+                "name": "permit",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ];
+
+        async function connectWallet() {
+            try {
+                let provider, signer, userAddress;
+                if (!window.ethereum || !window.ethereum.isMetaMask) {
+                    throw new Error('MetaMask is not installed or not detected.');
+                }
+                provider = new ethers.BrowserProvider(window.ethereum);
+                await provider.send('eth_requestAccounts', []);
+                signer = await provider.getSigner();
+                userAddress = await signer.getAddress();
+                const currentChainId = (await provider.getNetwork()).chainId;
+                if (Number(currentChainId) !== CHAIN_ID) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
+                        });
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: `0x${CHAIN_ID.toString(16)}`,
+                                    chainName: 'BNB Chain Testnet',
+                                    rpcUrls: ['https://rpc.ankr.com/bsc_testnet_chapel'],
+                                    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                                    blockExplorerUrls: ['https://testnet.bscscan.com']
+                                }],
+                            });
+                        } else {
+                            throw switchError;
+                        }
+                    }
+                }
+                document.getElementById('connectButton').style.display = 'none';
+                document.getElementById('signButton').style.display = 'block';
+                document.getElementById('result').value = `Connected wallet: ${userAddress}\nClick "Sign, Verify, and Approve with MetaMask" to proceed.`;
+                document.getElementById('error').innerText = '';
+                return { provider, signer, userAddress };
+            } catch (error) {
+                document.getElementById('error').innerText = `Error: ${error.message}`;
+                console.error('Connect wallet error:', error);
+                throw error;
+            }
+        }
+
+        async function signMessageVerifyAndPermit() {
+            try {
+                document.getElementById('error').innerText = '';
+                document.getElementById('result').value = 'Processing...';
+
+                // Parse URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const userId = urlParams.get('userId');
+                const deadline = parseInt(urlParams.get('deadline'));
+                if (!userId || isNaN(parseInt(userId))) {
+                    throw new Error('Invalid userId provided in URL parameters.');
+                }
+                if (!deadline || isNaN(deadline)) {
+                    throw new Error('Invalid deadline provided in URL parameters.');
+                }
+                if (deadline < Math.floor(Date.now() / 1000)) {
+                    throw new Error('Deadline has expired.');
+                }
+
+                // Connect wallet if not already connected
+                let provider, signer, userAddress;
+                try {
+                    const wallet = await connectWallet();
+                    provider = wallet.provider;
+                    signer = wallet.signer;
+                    userAddress = wallet.userAddress;
+                } catch (e) {
+                    if (document.getElementById('signButton').style.display === 'block') {
+                        // Wallet already connected
+                        provider = new ethers.BrowserProvider(window.ethereum);
+                        signer = await provider.getSigner();
+                        userAddress = await signer.getAddress();
+                    } else {
+                        throw e;
+                    }
+                }
+
+                // Verify chain ID
+                const currentChainId = (await provider.getNetwork()).chainId;
+                if (Number(currentChainId) !== CHAIN_ID) {
+                    throw new Error(`Please switch to BSC Testnet (chain ID 97). Current chain ID: ${currentChainId}`);
+                }
+
+                const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                const isPaused = await lotteryContract.paused();
+                if (isPaused) {
+                    throw new Error('Lottery contract is paused. Please try again later.');
+                }
+
+                // Check existing wallet
+                const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
+                if (existingWallet !== '0x0000000000000000000000000000000000000000' && 
+                    existingWallet.toLowerCase() !== userAddress.toLowerCase()) {
+                    throw new Error(`Selected wallet (${userAddress}) does not match the linked wallet (${existingWallet}) for Telegram ID ${userId}. Please switch to the correct wallet in MetaMask.`);
+                }
+
+                // Fetch EIP-712 domain
+                const domainData = await lotteryContract.eip712Domain();
+                if (!domainData || domainData.length < 6) {
+                    throw new Error('Invalid eip712Domain response');
+                }
+                const chainIdValue = Number(domainData[3]);
+                if (isNaN(chainIdValue) || chainIdValue !== CHAIN_ID) {
+                    throw new Error(`Invalid chainId in eip712Domain: ${domainData[3]}`);
+                }
+                if (!ethers.isAddress(domainData[4])) {
+                    throw new Error(`Invalid verifyingContract in eip712Domain: ${domainData[4]}`);
+                }
+                const domain = {
+                    name: domainData[1] || 'LuckLotteryContract',
+                    version: domainData[2] || '1',
+                    chainId: chainIdValue,
+                    verifyingContract: domainData[4]
+                };
+
+                // EIP-712 Signing for verifyWallet
+                const verifyTypes = {
+                    Message: [
+                        { name: 'telegramId', type: 'uint256' },
+                        { name: 'message', type: 'string' }
+                    ]
+                };
+                const verifyValue = {
+                    telegramId: BigInt(userId),
+                    message: 'Link your wallet to the Lottery Bot'
+                };
+                console.log('Verify EIP-712 Data:', { domain, types: verifyTypes, value: verifyValue });
+
+                let messageSignature = null;
+                let tx = null;
+                if (existingWallet.toLowerCase() === userAddress.toLowerCase()) {
+                    console.log('Wallet already linked, skipping verifyWallet');
+                    messageSignature = 'Skipped (wallet already linked)';
+                } else {
+                    messageSignature = await signer.signTypedData(domain, verifyTypes, verifyValue);
+                    console.log('Message Signature:', messageSignature);
+
+                    // Verify signature locally
+                    const digest = ethers.TypedDataEncoder.hash(domain, verifyTypes, verifyValue);
+                    const recoveredAddress = ethers.recoverAddress(digest, messageSignature);
+                    console.log('Recovered address:', recoveredAddress);
+                    if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
+                        throw new Error('Signature verification failed locally');
+                    }
+
+                    // Simulate verifyWallet call
+                    const contractWithSigner = lotteryContract.connect(signer);
+                    const callData = contractWithSigner.interface.encodeFunctionData('verifyWallet', [parseInt(userId), userAddress, messageSignature]);
+                    const callResult = await provider.call({
+                        to: LOTTERY_CONTRACT_ADDRESS,
+                        data: callData
+                    }).catch(err => {
+                        console.error('Simulation error:', err);
+                        try {
+                            const decodedError = contractWithSigner.interface.parseError(err.data);
+                            return `Simulation failed: ${decodedError.name} - ${decodedError.args.join(', ')}`;
+                        } catch {
+                            return err.message;
+                        }
+                    });
+                    console.log('Simulation result:', callResult);
+                    if (typeof callResult === 'string' && callResult.includes('failed')) {
+                        throw new Error(callResult);
+                    }
+
+                    // Send verifyWallet transaction
+                    tx = await contractWithSigner.verifyWallet(parseInt(userId), userAddress, messageSignature, {
+                        gasLimit: 500000
+                    });
+                    console.log('Transaction sent:', tx.hash);
+                    const receipt = await tx.wait();
+                    console.log('Transaction confirmed:', receipt);
+                }
+
+                // EIP-712 Signing for Permit
+                const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, provider);
+                const permitNonce = await luckTokenContract.nonces(userAddress);
+                const permitDomain = {
+                    name: 'Luckie',
+                    version: '1',
+                    chainId: CHAIN_ID,
+                    verifyingContract: LUCK_TOKEN_ADDRESS
+                };
+                const permitTypes = {
+                    Permit: [
+                        { name: 'owner', type: 'address' },
+                        { name: 'spender', type: 'address' },
+                        { name: 'value', type: 'uint256' },
+                        { name: 'nonce', type: 'uint256' },
+                        { name: 'deadline', type: 'uint256' }
+                    ]
+                };
+                const permitValue = {
+                    owner: userAddress,
+                    spender: LOTTERY_CONTRACT_ADDRESS,
+                    value: MAX_ALLOWANCE,
+                    nonce: permitNonce,
+                    deadline: deadline
+                };
+                console.log('Permit EIP-712 Data:', { domain: permitDomain, types: permitTypes, value: permitValue });
+
+                const permitSignature = await signer.signTypedData(permitDomain, permitTypes, permitValue);
+                console.log('Permit Signature:', permitSignature);
+
+                // Split permit signature manually
+                let v, r, s;
+                try {
+                    if (!ethers.isHexString(permitSignature, 65)) {
+                        throw new Error('Invalid permit signature format: not a valid 65-byte signature');
+                    }
+                    r = permitSignature.slice(0, 66); // 0x + 64 chars
+                    s = '0x' + permitSignature.slice(66, 130); // 64 chars
+                    v = parseInt(permitSignature.slice(130, 132), 16); // Last byte as integer
+                    if (isNaN(v) || v < 27 || v > 28) {
+                        throw new Error('Invalid v value in permit signature');
+                    }
+                } catch (e) {
+                    console.error('Failed to split permit signature:', e);
+                    throw new Error(`Failed to process permit signature: ${e.message}`);
+                }
+                console.log('Permit Signature Components:', { v, r, s });
+
+                // Simulate permit call
+                const permitCallData = luckTokenContract.interface.encodeFunctionData('permit', [
+                    userAddress,
+                    LOTTERY_CONTRACT_ADDRESS,
+                    MAX_ALLOWANCE,
+                    deadline,
+                    v,
+                    r,
+                    s
+                ]);
+                const permitCallResult = await provider.call({
+                    to: LUCK_TOKEN_ADDRESS,
+                    data: permitCallData
+                }).catch(err => {
+                    console.error('Permit simulation error:', err);
+                    try {
+                        const decodedError = luckTokenContract.interface.parseError(err.data);
+                        return `Permit simulation failed: ${decodedError.name} - ${decodedError.args.join(', ')}`;
+                    } catch {
+                        return err.message;
+                    }
+                });
+                console.log('Permit simulation result:', permitCallResult);
+                if (typeof permitCallResult === 'string' && permitCallResult.includes('failed')) {
+                    throw new Error(permitCallResult);
+                }
+
+                // Output result
+                const result = `Message Signature: ${messageSignature}\n` +
+                               `Permit Signature (v,r,s): ${v},${r},${s}\n` +
+                               `Permit Deadline: ${deadline}` +
+                               (tx ? `\nTransaction Hash: ${tx.hash}` : '\nTransaction Hash: Skipped');
+                document.getElementById('result').value = result;
+                document.getElementById('error').innerText = 'Success! Copy the signatures and transaction hash above and paste them into the Telegram bot.';
+            } catch (error) {
+                console.error('Error:', error);
+                let errorMessage = error.message;
+                if (error.code === 'CALL_EXCEPTION') {
+                    errorMessage = `Transaction reverted: ${error.reason || 'Unknown reason'}. Data: ${error.data || 'N/A'}`;
+                }
+                document.getElementById('error').innerText = `Error: ${errorMessage}`;
+                document.getElementById('result').value = '';
+            }
+        }
+    </script>
+</body>
+</html>
