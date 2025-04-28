@@ -3123,10 +3123,10 @@
             const domainData = await lotteryContract.eip712Domain();
             console.log('Raw eip712Domain Output:', domainData);
 
-            // Use exact domain data from contract
+            // Use domain data from contract, with fallback for debugging
             const domain = {
-                name: domainData[1],
-                version: domainData[2],
+                name: domainData[1] || "LuckLotteryContract",
+                version: domainData[2] || "1",
                 chainId: Number(domainData[3]),
                 verifyingContract: domainData[4]
             };
@@ -3151,38 +3151,63 @@
             if (existingWallet.toLowerCase() === userAddress.toLowerCase()) {
                 messageSignature = 'Skipped (wallet already linked)';
             } else {
+                // Try signing with contract's domain
                 messageSignature = await signer.signTypedData(domain, types, value);
-                console.log('Generated Signature:', messageSignature);
+                console.log('Generated Signature (contract domain):', messageSignature);
 
                 // Verify signature locally
                 const messageHash = ethers.TypedDataEncoder.hash(domain, types, value);
                 const recoveredAddress = ethers.verifyTypedData(domain, types, value, messageSignature);
-                console.log('Message Hash:', messageHash);
-                console.log('Recovered Address:', recoveredAddress);
+                console.log('Message Hash (contract domain):', messageHash);
+                console.log('Recovered Address (contract domain):', recoveredAddress);
                 if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
-                    throw new Error('Signature verification failed locally');
+                    throw new Error('Signature verification failed locally (contract domain)');
                 }
 
                 const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
                 console.log('Calling verifyWallet with:', { userId: parseInt(userId), userAddress, messageSignature });
 
-                // Simulate transaction to catch revert reason
+                // Simulate transaction
                 try {
                     await provider.call({
                         to: LOTTERY_CONTRACT_ADDRESS,
                         data: contract.interface.encodeFunctionData('verifyWallet', [parseInt(userId), userAddress, messageSignature])
                     });
                 } catch (simError) {
-                    let revertReason = 'Unknown revert reason';
-                    if (simError.data) {
-                        try {
-                            const decodedError = contract.interface.parseError(simError.data);
-                            revertReason = `Revert reason: ${decodedError.name} (${decodedError.args.join(', ')})`;
-                        } catch {
-                            revertReason = `Revert reason: ${simError.reason || 'Unknown'} (Data: ${simError.data || 'N/A'})`;
+                    // If simulation fails, try alternative domain name
+                    console.log('Simulation failed with contract domain, trying "LuckLotteryContract"');
+                    const altDomain = {
+                        name: "LuckLotteryContract",
+                        version: domainData[2] || "1",
+                        chainId: Number(domainData[3]),
+                        verifyingContract: domainData[4]
+                    };
+                    const altSignature = await signer.signTypedData(altDomain, types, value);
+                    console.log('Generated Signature (LuckLotteryContract):', altSignature);
+                    const altMessageHash = ethers.TypedDataEncoder.hash(altDomain, types, value);
+                    const altRecoveredAddress = ethers.verifyTypedData(altDomain, types, value, altSignature);
+                    console.log('Message Hash (LuckLotteryContract):', altMessageHash);
+                    console.log('Recovered Address (LuckLotteryContract):', altRecoveredAddress);
+
+                    try {
+                        await provider.call({
+                            to: LOTTERY_CONTRACT_ADDRESS,
+                            data: contract.interface.encodeFunctionData('verifyWallet', [parseInt(userId), userAddress, altSignature])
+                        });
+                        messageSignature = altSignature; // Use alternative signature if simulation succeeds
+                        console.log('Alternative signature simulation succeeded');
+                    } catch (altSimError) {
+                        let revertReason = 'Unknown revert reason';
+                        if (simError.data) {
+                            try {
+                                const decodedError = contract.interface.parseError(simError.data);
+                                revertReason = `Revert reason: ${decodedError.name} (${decodedError.args.join(', ')})`;
+                            } catch {
+                                revertReason = `Revert reason: ${simError.reason || 'Unknown'} (Data: ${simError.data || 'N/A'})`;
+                            }
                         }
+                        throw new Error(`Transaction simulation failed: ${revertReason}. Alternative domain also failed.`);
                     }
-                    throw new Error(`Transaction simulation failed: ${revertReason}`);
                 }
 
                 // Estimate gas
