@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification and Permit Approval</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" 
-            integrity="sha512-FDcVY+g7vc5CXANbrTSg1K5qLyriCsGDYCE02Li1tXEYdNQPvLPHNE+rT2Mjei8N7fZbe0WLhw27j2SrGRpdMg=="
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -3139,18 +3137,57 @@
             nonce: ethers.BigNumber.from(nonce)
         };
 
+        // Log EIP-712 data for debugging
+        console.log('EIP-712 Domain:', domain);
+        console.log('EIP-712 Types:', types);
+        console.log('EIP-712 Value:', value);
+
         let messageSignature = null;
         let tx = null;
         if (existingWallet.toLowerCase() === userAddress.toLowerCase()) {
             messageSignature = 'Skipped (wallet already linked)';
         } else {
             messageSignature = await signer._signTypedData(domain, types, value);
+            console.log('Generated Signature:', messageSignature);
+
+            // Verify signature locally
+            const messageHash = ethers.utils._TypedDataEncoder.hash(domain, types, value);
+            const recoveredAddress = ethers.utils.verifyTypedData(domain, types, value, messageSignature);
+            console.log('Message Hash:', messageHash);
+            console.log('Recovered Address:', recoveredAddress);
+            if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
+                throw new Error('Signature verification failed locally');
+            }
+
             const contract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
-            const gasEstimate = await contract.estimateGas.verifyWallet(parseInt(userId), userAddress, messageSignature).catch(err => {
-                throw new Error(`Gas estimation failed: ${err.message}`);
-            });
-            const gasLimit = gasEstimate.mul(120).div(100); // 20% buffer
             console.log('Calling verifyWallet with:', { userId: parseInt(userId), userAddress, messageSignature });
+            
+            // Simulate transaction to catch revert reason
+            try {
+                await provider.call({
+                    to: LOTTERY_CONTRACT_ADDRESS,
+                    data: contract.interface.encodeFunctionData('verifyWallet', [parseInt(userId), userAddress, messageSignature])
+                });
+            } catch (simError) {
+                let revertReason = 'Unknown revert reason';
+                if (simError.data) {
+                    try {
+                        const decodedError = contract.interface.parseError(simError.data);
+                        revertReason = `Revert reason: ${decodedError.name} (${decodedError.args.join(', ')})`;
+                    } catch {
+                        revertReason = `Revert reason: ${simError.reason || 'Unknown'} (Data: ${simError.data || 'N/A'})`;
+                    }
+                }
+                throw new Error(`Transaction simulation failed: ${revertReason}`);
+            }
+
+            // Estimate gas
+            const gasEstimate = await contract.estimateGas.verifyWallet(parseInt(userId), userAddress, messageSignature).catch(err => {
+                throw new Error(`Gas estimation failed: ${err.reason || err.message}`);
+            });
+            const gasLimit = gasEstimate.mul(150).div(100); // 50% buffer
+            console.log('Gas Estimate:', gasEstimate.toString(), 'Gas Limit:', gasLimit.toString());
+
             tx = await contract.verifyWallet(parseInt(userId), userAddress, messageSignature, { gasLimit });
             console.log('Transaction sent:', tx.hash);
             await tx.wait();
