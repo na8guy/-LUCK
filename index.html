@@ -3064,12 +3064,12 @@
                 }
 
                 await window.ethereum.request({ method: 'eth_requestAccounts' });
-                const provider = new ethers.Web3Provider(window.ethereum);
-                const signer = provider.getSigner();
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
                 const userAddress = await signer.getAddress();
 
                 const currentChainId = (await provider.getNetwork()).chainId;
-                if (currentChainId !== CHAIN_ID) {
+                if (Number(currentChainId) !== CHAIN_ID) {
                     try {
                         await window.ethereum.request({
                             method: 'wallet_switchEthereumChain',
