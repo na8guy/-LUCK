@@ -95,7 +95,7 @@
         document.getElementById('message').textContent = message;
         document.getElementById('userId').textContent = userId;
 
-        const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0xDE0c4272F6Ab09D06Db9EeA94F2639454fC782ee');
+        const LOTTERY_CONTRACT_ADDRESS = ethers.utils.getAddress('0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359');
         const LUCK_TOKEN_ADDRESS = ethers.utils.getAddress('0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE');
         const LOTTERY_CONTRACT_ABI = [
   {
@@ -113,6 +113,11 @@
       },
       {
         "name": "_teamWallet",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_botAddress",
         "type": "address",
         "internalType": "address"
       },
@@ -229,6 +234,19 @@
     "name": "ZeroAddress",
     "type": "error",
     "inputs": []
+  },
+  {
+    "name": "BotAddressSet",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "newBotAddress",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
   },
   {
     "name": "CashbackContractSet",
@@ -559,6 +577,25 @@
     "anonymous": false
   },
   {
+    "name": "WalletDelinked",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "name": "WalletLinked",
     "type": "event",
     "inputs": [
@@ -727,6 +764,19 @@
     "stateMutability": "nonpayable"
   },
   {
+    "name": "botAddress",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
     "name": "buyTickets",
     "type": "function",
     "inputs": [
@@ -739,6 +789,49 @@
         "name": "numberOfTickets",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "buyTicketsFor",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "lotteryId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "numberOfTickets",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "v",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "r",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [],
@@ -852,6 +945,19 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "name": "delinkWallet",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "name": "depositTokens",
@@ -1310,7 +1416,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IERC20"
+        "internalType": "contract IERC20Permit"
       }
     ],
     "stateMutability": "view"
@@ -1416,6 +1522,19 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "name": "setBotAddress",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_newBotAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "name": "setCashbackContract",
