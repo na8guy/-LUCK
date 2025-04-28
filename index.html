@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LuckyU Wallet Verification and Permit Approval</title>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js" 
-            integrity="sha512-7k3y8G+vbjSM9q+kYH6diYhO6RtwPaN3v5H2HWFq1gFIRzIUSCNUqAfhm2W+dkT3qXdn4lwgq3LLrLm5PRGna5A=="
+            integrity="sha512-dj/EbePKIJrkhHMePgJ6ACP0v5whCZi+A8ot7WP+L0a3sPafqqWRiRhBBlGprs5hs5JjOYuTDlOic+qKc/s3mw=="
             crossorigin="anonymous"></script>
+    <script src="/ethers.umd.min.js" 
+            integrity="sha512-dj/EbePKIJrkhHMePgJ6ACP0v5whCZi+A8ot7WP+L0a3sPafqqWRiRhBBlGprs5hs5JjOYuTDlOic+qKc/s3mw=="
+            onerror="console.error('Local ethers.js failed to load');"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -95,17 +98,14 @@
 
         // Check if ethers.js loaded
         if (typeof ethers === 'undefined') {
-            console.error('Ethers.js failed to load. Please check the script source.');
-            document.getElementById('error').innerText = 'Error: Failed to load required libraries. Please refresh the page.';
+            console.error('Ethers.js failed to load from both CDN and local sources.');
+            document.getElementById('error').innerText = 'Error: Failed to load required libraries. Please check your internet connection or contact support.';
             throw new Error('Ethers.js not loaded');
         }
 
-        // Verify splitSignature availability
-        if (!ethers.splitSignature) {
-            console.error('ethers.splitSignature is not available. Please check the ethers.js version.');
-            document.getElementById('error').innerText = 'Error: Required library functions are missing. Please refresh the page.';
-            throw new Error('ethers.splitSignature not available');
-        }
+        // Log ethers functions for debugging
+        console.log('Ethers version:', ethers.version);
+        console.log('Ethers functions:', Object.keys(ethers));
 
         // Initialize constants
         const LOTTERY_CONTRACT_ADDRESS = '0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359';
@@ -406,16 +406,18 @@
                 const permitSignature = await signer.signTypedData(permitDomain, permitTypes, permitValue);
                 console.log('Permit Signature:', permitSignature);
 
-                // Split permit signature
+                // Split permit signature manually
                 let v, r, s;
                 try {
                     if (!ethers.isHexString(permitSignature, 65)) {
                         throw new Error('Invalid permit signature format: not a valid 65-byte signature');
                     }
-                    const permitSig = ethers.splitSignature(permitSignature);
-                    v = permitSig.v;
-                    r = permitSig.r;
-                    s = permitSig.s;
+                    r = permitSignature.slice(0, 66); // 0x + 64 chars
+                    s = '0x' + permitSignature.slice(66, 130); // 64 chars
+                    v = parseInt(permitSignature.slice(130, 132), 16); // Last byte as integer
+                    if (isNaN(v) || v < 27 || v > 28) {
+                        throw new Error('Invalid v value in permit signature');
+                    }
                 } catch (e) {
                     console.error('Failed to split permit signature:', e);
                     throw new Error(`Failed to process permit signature: ${e.message}`);
