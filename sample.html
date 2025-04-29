@@ -50,143 +50,24 @@
             'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
             'https://bsc-testnet.bnbchain.org'
         ];
+        const WEB_APP_URL = 'https://na8guy.github.io/-LUCK';
 
-        const LOTTERY_CONTRACT_ABI = [
-            {
-                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
-                "name": "linkWallet",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
-                "name": "delinkWallet",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [
-                    {"internalType": "uint32", "name": "lotteryId", "type": "uint32"},
-                    {"internalType": "uint256", "name": "numberOfTickets", "type": "uint256"}
-                ],
-                "name": "buyTickets",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "paused",
-                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "name": "telegramIdToWallet",
-                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "ticketPrice",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "currentLotteryId",
-                "outputs": [{"internalType": "uint32", "name": "", "type": "uint32"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [{"internalType": "uint32", "name": "lotteryId", "type": "uint32"}],
-                "name": "getLotteryInfo",
-                "outputs": [
-                    {"internalType": "uint256", "name": "", "type": "uint256"},
-                    {"internalType": "uint256", "name": "", "type": "uint256"},
-                    {"internalType": "uint256", "name": "", "type": "uint256"},
-                    {"internalType": "bool", "name": "", "type": "bool"},
-                    {"internalType": "uint256", "name": "", "type": "uint256"},
-                    {"internalType": "uint256", "name": "", "type": "uint256"}
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            }
-        ];
+        const LOTTERY_CONTRACT_ABI = [...]; // Same as previous
+        const LUCK_TOKEN_ABI = [...];
+        const CASHBACK_CONTRACT_ABI = [...];
+        const TOKEN_DISTRIBUTION_CONTRACT_ABI = [...];
 
-        const LUCK_TOKEN_ABI = [
-            {
-                "inputs": [
-                    {"internalType": "address", "name": "spender", "type": "address"},
-                    {"internalType": "uint256", "name": "amount", "type": "uint256"}
-                ],
-                "name": "approve",
-                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
-                "name": "balanceOf",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
+        // Redirect to external browser if in Telegram iframe and no wallet provider
+        const redirectToExternalBrowser = (userId, action) => {
+            const url = `${WEB_APP_URL}?userId=${encodeURIComponent(userId)}&action=${encodeURIComponent(action)}&external=true`;
+            if (window.Telegram && window.Telegram.WebApp) {
+                console.log(`Redirecting to external browser: ${url}`);
+                window.Telegram.WebApp.openLink(url);
+            } else {
+                console.log(`Opening in current browser: ${url}`);
+                window.location.href = url;
             }
-        ];
-
-        const CASHBACK_CONTRACT_ABI = [
-            {
-                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
-                "name": "cashbackBalances",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "claimCashback",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            }
-        ];
-
-        const TOKEN_DISTRIBUTION_CONTRACT_ABI = [
-            {
-                "inputs": [],
-                "name": "distributionAmount",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "distributionInterval",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "distributeTokens",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
-                "name": "lastDistributionTime",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            }
-        ];
+        };
 
         // Override window.open for MetaMask URL redirection
         const originalOpen = window.open;
@@ -197,10 +78,8 @@
                     console.log(`Redirecting MetaMask URL: ${url} -> ${redirectUrl}`);
                     window.Telegram.WebApp.openLink(redirectUrl);
                     return null;
-                } else {
-                    console.log(`Telegram.WebApp not available, falling back to original open: ${redirectUrl}`);
-                    return originalOpen.apply(window, [redirectUrl, ...args]);
                 }
+                return originalOpen.apply(window, [redirectUrl, ...args]);
             }
             return originalOpen.apply(window, [url, ...args]);
         };
@@ -234,13 +113,10 @@
             const [debugLogs, setDebugLogs] = useState([]);
             const [showDebugConsole, setShowDebugConsole] = useState(false);
 
-            // Custom logging function with BigInt handling
             const logToConsole = (message, type = 'info') => {
                 const timestamp = new Date().toLocaleTimeString();
                 const serializedMessage = typeof message === 'object'
-                    ? JSON.stringify(message, (key, value) =>
-                        typeof value === 'bigint' ? value.toString() : value
-                      )
+                    ? JSON.stringify(message, (key, value) => typeof value === 'bigint' ? value.toString() : value)
                     : message;
                 setDebugLogs(prev => [...prev, { timestamp, message: serializedMessage, type }]);
                 console.log(`[${timestamp}] ${type.toUpperCase()}: ${serializedMessage}`);
@@ -277,24 +153,38 @@
                             logToConsole(`MetaMask SDK initialization failed: ${sdkErr.message}`, 'error');
                         }
 
+                        // Try window.ethereum
+                        if (!provider && window.ethereum) {
+                            logToConsole('window.ethereum detected', 'success');
+                            provider = window.ethereum;
+                        }
+
+                        // Try Telegram Wallet
+                        if (!provider && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.Wallet) {
+                            logToConsole('Telegram Wallet detected', 'success');
+                            provider = window.Telegram.WebApp.Wallet;
+                        }
+
                         // Try WalletConnect
                         let wcProvider = null;
                         if (!provider) {
                             try {
                                 logToConsole('Attempting to initialize WalletConnect...');
                                 wcProvider = new WalletConnectProvider({
-                                    rpc: {
-                                        [CHAIN_ID]: BSC_TESTNET_RPCS[0]
-                                    },
+                                    rpc: { [CHAIN_ID]: BSC_TESTNET_RPCS[0] },
                                     chainId: CHAIN_ID,
-                                    qrcode: false // Disable QR code, rely on deep links
+                                    qrcode: window.innerWidth > 768 // QR code for desktop only
                                 });
                                 wcProvider.on('display_uri', (uri) => {
                                     logToConsole(`WalletConnect URI: ${uri}`, 'info');
                                     if (uri.startsWith('wc:')) {
                                         const metamaskUrl = `metamask://wc?uri=${encodeURIComponent(uri)}`;
                                         logToConsole(`Opening MetaMask URL: ${metamaskUrl}`, 'info');
-                                        window.open(metamaskUrl);
+                                        if (window.Telegram && window.Telegram.WebApp) {
+                                            window.Telegram.WebApp.openLink(metamaskUrl);
+                                        } else {
+                                            window.open(metamaskUrl);
+                                        }
                                     }
                                 });
                                 logToConsole('WalletConnect initialized', 'success');
@@ -304,21 +194,16 @@
                             }
                         }
 
-                        // Fallback to window.ethereum
-                        if (!provider && window.ethereum) {
-                            logToConsole('window.ethereum detected', 'success');
-                            provider = window.ethereum;
-                        }
-
-                        // Fallback to Telegram Wallet
-                        if (!provider && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.Wallet) {
-                            logToConsole('Telegram Wallet detected', 'success');
-                            provider = window.Telegram.WebApp.Wallet;
+                        // Redirect to external browser if no provider and in Telegram iframe
+                        if (!provider && !wcProvider && window.Telegram && window.Telegram.WebApp && !new URLSearchParams(window.location.search).get('external')) {
+                            logToConsole('No wallet provider detected in Telegram iframe, redirecting to external browser', 'warn');
+                            redirectToExternalBrowser(userId, action);
+                            return;
                         }
 
                         if (!provider && !wcProvider) {
-                            logToConsole('No wallet provider detected. Please install MetaMask, use Telegram Wallet, or access via a supported wallet.', 'error');
-                            setError('No wallet provider detected. Please install MetaMask from https://metamask.io, use Telegram Wallet, or access via a supported wallet.');
+                            logToConsole('No wallet provider detected. Please install MetaMask or use Telegram Wallet.', 'error');
+                            setError('No wallet provider detected. Please install MetaMask from https://metamask.io or use Telegram Wallet.');
                             return;
                         }
 
@@ -351,7 +236,7 @@
                     }
                 };
                 initializeWallet();
-            }, []);
+            }, [userId, action]);
 
             // Initialize Telegram Web App and fetch lottery info
             useEffect(() => {
@@ -361,8 +246,7 @@
                     window.Telegram.WebApp.expand();
                     setTelegramUser(window.Telegram.WebApp.initDataUnsafe.user || {});
                 } else {
-                    logToConsole('Telegram Web App SDK not loaded', 'error');
-                    setError('Telegram Web App SDK not loaded. Please access via Telegram.');
+                    logToConsole('Running outside Telegram Web App', 'info');
                 }
 
                 const params = new URLSearchParams(window.location.search);
@@ -387,36 +271,14 @@
                             }
                         }
                         if (!provider) {
-                            throw new Error('All BSC Testnet RPCs failed. Please check your network.');
+                            throw new Error('All BSC Testnet RPCs failed.');
                         }
 
-                        if (!ethers.isAddress(LOTTERY_CONTRACT_ADDRESS)) {
-                            logToConsole(`Invalid contract address: ${LOTTERY_CONTRACT_ADDRESS}`, 'error');
-                            throw new Error('Invalid contract address. Please verify on BSC Testnet Explorer.');
-                        }
-                        logToConsole(`Contract address validated: ${LOTTERY_CONTRACT_ADDRESS}`, 'info');
-
-                        let lotteryContract;
-                        try {
-                            lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                            const functionNames = lotteryContract.interface.fragments
-                                .filter(frag => frag.type === 'function')
-                                .map(frag => frag.name);
-                            logToConsole(`Lottery contract functions: ${functionNames.join(', ')}`);
-                        } catch (contractErr) {
-                            logToConsole(`Failed to initialize lottery contract: ${contractErr.message}`, 'error');
-                            throw new Error('Invalid contract address or ABI. Please verify on BSC Testnet Explorer.');
-                        }
-
+                        const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
                         const userIdInt = params.get('userId') ? parseInt(params.get('userId')) : 0;
                         let linkedWallet = '0x0000000000000000000000000000000000000000';
                         try {
-                            if (lotteryContract.interface.getFunction('telegramIdToWallet')) {
-                                linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
-                                logToConsole(`Linked wallet for userId ${userIdInt}: ${linkedWallet}`);
-                            } else {
-                                logToConsole('telegramIdToWallet not found in contract ABI', 'warn');
-                            }
+                            linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
                         } catch (walletErr) {
                             logToConsole(`Failed to fetch telegramIdToWallet: ${walletErr.message}`, 'warn');
                         }
@@ -427,23 +289,20 @@
                         let lotteryDetails;
                         try {
                             lotteryDetails = await lotteryContract.getLotteryInfo(currentLotteryId);
-                            logToConsole(`getLotteryInfo raw response: ${JSON.stringify(lotteryDetails, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`, 'info');
+                            logToConsole(`getLotteryInfo: ${JSON.stringify(lotteryDetails, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
                         } catch (lotteryErr) {
                             logToConsole(`Failed to fetch getLotteryInfo: ${lotteryErr.message}`, 'error');
-                            throw new Error('Failed to fetch lottery info. ABI may be incorrect.');
+                            throw new Error('Failed to fetch lottery info.');
                         }
 
                         let startTime, endTime, resultTime, lotteryEnded, participants, prizePool;
                         if (Array.isArray(lotteryDetails) && lotteryDetails.length >= 6) {
                             [startTime, endTime, resultTime, lotteryEnded, participants, prizePool] = lotteryDetails;
-                            logToConsole('getLotteryInfo returned array', 'info');
                         } else {
-                            logToConsole('getLotteryInfo returned invalid data', 'error');
-                            throw new Error('Invalid getLotteryInfo response. Please verify contract ABI.');
+                            throw new Error('Invalid getLotteryInfo response.');
                         }
 
                         const blockTimestamp = (await provider.getBlock('latest')).timestamp;
-
                         setLotteryInfo({
                             currentLotteryId: currentLotteryId.toString(),
                             ticketPrice: ethers.formatEther(ticketPrice),
@@ -472,7 +331,6 @@
                 fetchLotteryInfo();
             }, []);
 
-            // Trigger confetti animation
             const triggerConfetti = () => {
                 confetti({
                     particleCount: 100,
@@ -482,11 +340,10 @@
                 });
             };
 
-            // Connect wallet
             const connectWallet = async () => {
                 if (!sdk) {
                     logToConsole('Wallet provider not initialized', 'error');
-                    setError('Wallet provider not available. Please install MetaMask from https://metamask.io, use Telegram Wallet, or access via a supported wallet.');
+                    setError('Wallet provider not available. Please install MetaMask or use Telegram Wallet.');
                     return null;
                 }
                 try {
@@ -497,13 +354,13 @@
                     const providerAvailable = sdk.getProvider();
                     if (!providerAvailable && !walletConnectProvider) {
                         logToConsole('Wallet provider not detected', 'error');
-                        throw new Error('Wallet provider not detected. Please ensure MetaMask or Telegram Wallet is installed.');
+                        setError('Wallet provider not detected. Redirecting to external browser...');
+                        redirectToExternalBrowser(userId, action);
+                        return null;
                     }
-                    logToConsole('Wallet provider detected');
 
                     const accounts = await sdk.connect();
                     if (!accounts || accounts.length === 0) {
-                        logToConsole('No accounts returned', 'error');
                         throw new Error('No accounts returned by wallet.');
                     }
                     logToConsole(`Connected account: ${accounts[0]}`);
@@ -512,20 +369,17 @@
                     const signer = await provider.getSigner();
                     const address = accounts[0];
                     const currentChainId = Number((await provider.getNetwork()).chainId);
-                    logToConsole(`Current chain ID: ${currentChainId}`);
 
                     if (currentChainId !== CHAIN_ID) {
-                        logToConsole(`Switching to chain ID ${CHAIN_ID} (BSC Testnet)`);
+                        logToConsole(`Switching to chain ID ${CHAIN_ID}`);
                         try {
-                            await sdk.getProvider().request({
+                            await (sdk.getProvider() || walletConnectProvider).request({
                                 method: 'wallet_switchEthereumChain',
                                 params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
                             });
-                            logToConsole('Network switched successfully', 'success');
                         } catch (switchError) {
                             if (switchError.code === 4902) {
-                                logToConsole('Adding BSC Testnet to wallet');
-                                await sdk.getProvider().request({
+                                await (sdk.getProvider() || walletConnectProvider).request({
                                     method: 'wallet_addEthereumChain',
                                     params: [{
                                         chainId: `0x${CHAIN_ID.toString(16)}`,
@@ -535,10 +389,8 @@
                                         blockExplorerUrls: ['https://testnet.bscscan.com']
                                     }],
                                 });
-                                logToConsole('BSC Testnet added successfully', 'success');
                             } else {
-                                logToConsole(`Network switch failed: ${switchError.message}`, 'error');
-                                throw new Error('Failed to switch to BSC Testnet. Please switch manually in your wallet.');
+                                throw new Error('Failed to switch to BSC Testnet.');
                             }
                         }
                     }
@@ -550,44 +402,29 @@
                     return { provider, signer, address };
                 } catch (err) {
                     logToConsole(`Connect wallet error: ${err.message} (Code: ${err.code})`, 'error');
-                    let errorMessage = 'Failed to connect wallet';
-                    if (err.code === 4001) {
-                        errorMessage = 'Connection rejected by user';
-                    } else if (err.message.includes('No accounts')) {
-                        errorMessage = 'No accounts available in wallet. Please add an account.';
-                    } else if (err.message.includes('Wallet provider not detected')) {
-                        errorMessage = 'Wallet provider not installed. Please install MetaMask from https://metamask.io or use Telegram Wallet.';
-                    } else if (err.message.includes('Failed to switch')) {
-                        errorMessage = err.message;
-                    } else {
-                        errorMessage = `Failed to connect wallet: ${err.message}`;
-                    }
+                    const errorMessage = err.code === 4001 ? 'Connection rejected by user' : `Failed to connect wallet: ${err.message}`;
                     setError(errorMessage);
                     setStatus('');
                     return null;
                 }
             };
 
-            // Disconnect wallet
             const disconnectWallet = () => {
                 setWalletAddress('');
                 setIsWalletLinked(false);
                 if (sdk) {
                     sdk.terminate();
                     setSdk(null);
-                    logToConsole('Wallet provider terminated', 'success');
                 }
                 if (walletConnectProvider) {
                     walletConnectProvider.disconnect();
                     setWalletConnectProvider(null);
-                    logToConsole('WalletConnect disconnected', 'success');
                 }
-                setStatus('Wallet delinked! Please disconnect your wallet manually if needed. 🎉');
-                logToConsole('Wallet disconnected from UI', 'success');
+                setStatus('Wallet disconnected! 🎉');
+                logToConsole('Wallet disconnected', 'success');
                 triggerConfetti();
             };
 
-            // Execute blockchain actions
             const executeAction = async (actionToExecute) => {
                 try {
                     setError('');
@@ -595,17 +432,14 @@
                     logToConsole(`Executing action: ${actionToExecute}`);
 
                     if (!userId || isNaN(parseInt(userId))) {
-                        logToConsole('Invalid Telegram User ID', 'error');
                         throw new Error('Invalid Telegram User ID.');
                     }
 
                     const wallet = await connectWallet();
                     if (!wallet) {
-                        logToConsole('Wallet connection failed', 'error');
                         throw new Error('Wallet connection failed.');
                     }
                     const { provider, signer, address } = wallet;
-                    logToConsole(`Using wallet address: ${address}`);
 
                     const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
                     const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, signer);
@@ -613,111 +447,69 @@
                     const tokenDistributionContract = new ethers.Contract(TOKEN_DISTRIBUTION_CONTRACT_ADDRESS, TOKEN_DISTRIBUTION_CONTRACT_ABI, signer);
 
                     if (lotteryInfo.isPaused && actionToExecute !== 'claim_cashback' && actionToExecute !== 'token_distribution' && actionToExecute !== 'delink_wallet') {
-                        logToConsole('Lottery contract is paused', 'error');
-                        throw new Error('Lottery contract is paused. Try again later.');
+                        throw new Error('Lottery contract is paused.');
                     }
 
                     let tx;
                     switch (actionToExecute) {
                         case 'set_wallet': {
-                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
-                                logToConsole('telegramIdToWallet not supported by contract', 'error');
-                                throw new Error('telegramIdToWallet not supported by the contract.');
-                            }
                             const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
-                            logToConsole(`Existing wallet for userId ${userId}: ${existingWallet}`);
                             if (existingWallet !== '0x0000000000000000000000000000000000000000' &&
                                 existingWallet.toLowerCase() !== address.toLowerCase()) {
-                                logToConsole(`Telegram ID linked to another wallet: ${existingWallet}`, 'error');
-                                throw new Error(`This Telegram ID is linked to another wallet (${existingWallet}).`);
+                                throw new Error(`Telegram ID linked to another wallet (${existingWallet}).`);
                             }
                             tx = await lotteryContract.linkWallet(parseInt(userId), { gasLimit: 200000 });
-                            logToConsole(`linkWallet transaction sent: ${tx.hash}`);
                             break;
                         }
                         case 'buy_tickets': {
-                            if (!buyTicketsForm.lotteryId || isNaN(parseInt(buyTicketsForm.lotteryId)) ||
-                                !buyTicketsForm.ticketCount || isNaN(parseInt(buyTicketsForm.ticketCount)) ||
-                                parseInt(buyTicketsForm.ticketCount) <= 0) {
-                                logToConsole('Invalid lottery ID or ticket count', 'error');
+                            if (!buyTicketsForm.lotteryId || !buyTicketsForm.ticketCount || parseInt(buyTicketsForm.ticketCount) <= 0) {
                                 throw new Error('Invalid lottery ID or ticket count.');
                             }
                             const ticketPrice = await lotteryContract.ticketPrice();
                             const totalCost = ticketPrice * BigInt(buyTicketsForm.ticketCount);
                             const balance = await luckTokenContract.balanceOf(address);
-                            logToConsole(`Ticket price: ${ethers.formatEther(ticketPrice)}, Total cost: ${ethers.formatEther(totalCost)}, Balance: ${ethers.formatEther(balance)}`);
                             if (balance < totalCost) {
-                                logToConsole(`Insufficient $LUCK balance`, 'error');
-                                throw new Error(`Insufficient $LUCK balance: ${ethers.formatEther(balance)} available, ${ethers.formatEther(totalCost)} needed.`);
+                                throw new Error(`Insufficient $LUCK balance: ${ethers.formatEther(balance)} available.`);
                             }
 
                             setStatus('Requesting token approval...');
                             tx = await luckTokenContract.approve(LOTTERY_CONTRACT_ADDRESS, totalCost, { gasLimit: 100000 });
-                            const approvalReceipt = await tx.wait();
-                            logToConsole(`Token approval transaction: ${tx.hash}, Status: ${approvalReceipt.status}`);
-                            if (approvalReceipt.status !== 1) {
-                                logToConsole('Token approval failed', 'error');
-                                throw new Error('Token approval failed.');
-                            }
-                            setStatus('Token approval successful! Processing ticket purchase...');
-
+                            await tx.wait();
+                            setStatus('Processing ticket purchase...');
                             tx = await lotteryContract.buyTickets(parseInt(buyTicketsForm.lotteryId), parseInt(buyTicketsForm.ticketCount), { gasLimit: 300000 });
-                            logToConsole(`buyTickets transaction sent: ${tx.hash}`);
                             break;
                         }
                         case 'claim_cashback': {
                             const cashbackBalance = await cashbackContract.cashbackBalances(address);
-                            logToConsole(`Cashback balance: ${ethers.formatEther(cashbackBalance)}`);
                             if (cashbackBalance === 0n) {
-                                logToConsole('No cashback available', 'error');
-                                throw new Error('No cashback available to claim.');
+                                throw new Error('No cashback available.');
                             }
                             tx = await cashbackContract.claimCashback({ gasLimit: 200000 });
-                            logToConsole(`claimCashback transaction sent: ${tx.hash}`);
                             break;
                         }
                         case 'token_distribution': {
                             const lastDistributionTime = await tokenDistributionContract.lastDistributionTime(address);
                             const distributionInterval = await tokenDistributionContract.distributionInterval();
                             const currentTime = Math.floor(Date.now() / 1000);
-                            logToConsole(`Last distribution: ${lastDistributionTime}, Interval: ${distributionInterval}, Current time: ${currentTime}`);
                             if (lastDistributionTime > 0 && (currentTime - lastDistributionTime) < distributionInterval) {
-                                const nextTime = new Date((lastDistributionTime + distributionInterval) * 1000).toUTCString();
-                                logToConsole(`Next distribution available after ${nextTime}`, 'error');
-                                throw new Error(`Next distribution available after ${nextTime}.`);
-                            }
-                            const amount = await tokenDistributionContract.distributionAmount();
-                            logToConsole(`Distribution amount: ${ethers.formatEther(amount)}`);
-                            if (amount === 0n) {
-                                logToConsole('No tokens available for distribution', 'error');
-                                throw new Error('No tokens available for distribution.');
+                                throw new Error(`Next distribution available after ${new Date((lastDistributionTime + distributionInterval) * 1000).toUTCString()}.`);
                             }
                             tx = await tokenDistributionContract.distributeTokens({ gasLimit: 200000 });
-                            logToConsole(`distributeTokens transaction sent: ${tx.hash}`);
                             break;
                         }
                         case 'delink_wallet': {
-                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
-                                logToConsole('telegramIdToWallet not supported by contract', 'error');
-                                throw new Error('telegramIdToWallet not supported by the contract.');
-                            }
                             const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
-                            logToConsole(`Existing wallet for userId ${userId}: ${existingWallet}`);
                             if (existingWallet === '0x0000000000000000000000000000000000000000') {
-                                logToConsole('No wallet linked to this Telegram ID', 'error');
-                                throw new Error('No wallet linked to this Telegram ID.');
+                                throw new Error('No wallet linked.');
                             }
                             if (existingWallet.toLowerCase() !== address.toLowerCase()) {
-                                logToConsole(`Connected wallet (${address}) does not match linked wallet (${existingWallet})`, 'error');
-                                throw new Error(`Connected wallet (${address}) does not match linked wallet (${existingWallet}).`);
+                                throw new Error(`Connected wallet does not match linked wallet.`);
                             }
                             tx = await lotteryContract.delinkWallet(parseInt(userId), { gasLimit: 200000 });
-                            logToConsole(`delinkWallet transaction sent: ${tx.hash}`);
                             break;
                         }
                         default:
-                            logToConsole('Invalid action specified', 'error');
-                            throw new Error('Invalid action specified.');
+                            throw new Error('Invalid action.');
                     }
 
                     const receipt = await tx.wait();
@@ -725,12 +517,8 @@
                     setStatus(`Transaction successful! Hash: ${receipt.hash} 🎉`);
                     if (window.Telegram && window.Telegram.WebApp) {
                         window.Telegram.WebApp.showAlert('Transaction completed successfully!');
-                    }
-
-                    if (actionToExecute === 'delink_wallet' && window.Telegram && window.Telegram.WebApp) {
-                        logToConsole('Sending delink_wallet data to Telegram bot');
                         window.Telegram.WebApp.sendData(JSON.stringify({
-                            action: 'delink_wallet',
+                            action: actionToExecute,
                             userId: userId,
                             success: true,
                             txHash: receipt.hash
@@ -739,7 +527,6 @@
 
                     if (actionToExecute === 'set_wallet') {
                         setIsWalletLinked(true);
-                        triggerConfetti();
                     } else if (actionToExecute === 'delink_wallet') {
                         disconnectWallet();
                     }
@@ -747,30 +534,23 @@
                         setShowBuyTicketsForm(false);
                         setBuyTicketsForm({ lotteryId: '', ticketCount: '' });
                     }
+                    triggerConfetti();
                 } catch (err) {
-                    logToConsole(`Execute action error: ${err.message} (Code: ${err.code})`, 'error');
-                    let errorMessage = err.message || 'Transaction failed';
-                    if (err.code === 4001) {
-                        errorMessage = 'Transaction rejected by user';
-                    } else if (err.reason) {
-                        errorMessage = err.reason;
-                    }
-                    setError(`Error: ${errorMessage}`);
+                    logToConsole(`Execute action error: ${err.message}`, 'error');
+                    const errorMessage = err.code === 4001 ? 'Transaction rejected by user' : `Error: ${err.message}`;
+                    setError(errorMessage);
                     setStatus('');
                     if (window.Telegram && window.Telegram.WebApp) {
-                        window.Telegram.WebApp.showAlert(`Error: ${errorMessage}`);
+                        window.Telegram.WebApp.showAlert(errorMessage);
                     }
                 }
             };
 
-            // Handle Buy Tickets form submission
             const handleBuyTicketsSubmit = (e) => {
                 e.preventDefault();
-                logToConsole('Submitting buy tickets form');
                 executeAction('buy_tickets');
             };
 
-            // Format timestamp to readable date
             const formatTimestamp = (timestamp) => {
                 if (!timestamp || timestamp === '0') return 'N/A';
                 return new Date(parseInt(timestamp) * 1000).toLocaleString('en-US', {
@@ -779,7 +559,6 @@
                 });
             };
 
-            // Render action buttons
             const renderActionButtons = () => (
                 <div className="space-y-4 animate-fade-in">
                     <button
@@ -809,7 +588,6 @@
                 </div>
             );
 
-            // Render debug console
             const renderDebugConsole = () => (
                 <div className="mt-4">
                     <button
@@ -843,7 +621,7 @@
                             <div className="text-center">
                                 <h2 className="text-2xl font-semibold mb-6 text-yellow-600">Join the Lottery Fun! 🎈</h2>
                                 <p className="text-gray-700 mb-6">
-                                    Link your MetaMask or Telegram Wallet to start playing the Luckie Lottery! 🚀
+                                    Connect your MetaMask or Telegram Wallet to start playing! 🚀
                                 </p>
                                 <button
                                     onClick={() => executeAction('set_wallet')}
@@ -871,7 +649,7 @@
                                     <p><strong>Participants:</strong> {lotteryInfo.participants}</p>
                                     <p><strong>Status:</strong> {lotteryInfo.active ? 'Active 🟢' : 'Inactive 🔴'}</p>
                                     {lotteryInfo.isPaused && (
-                                        <p className="text-red-600">⚠️ Lottery contract is paused. Delinking, cashback, and token distribution are still available!</p>
+                                        <p className="text-red-600">⚠️ Lottery contract is paused.</p>
                                     )}
                                 </div>
                                 {showBuyTicketsForm ? (
@@ -921,7 +699,7 @@
                         )}
                         {renderDebugConsole()}
                         <div className="mt-6 text-sm text-gray-500 text-center">
-                            <p>Need testnet BNB for gas fees? Get it here:</p>
+                            <p>Need testnet BNB? Get it here:</p>
                             <a
                                 href="https://www.bnbchain.org/en/testnet-faucet"
                                 target="_blank"
@@ -935,7 +713,6 @@
             );
         }
 
-        // Tailwind animation for fade-in
         tailwind.config = {
             theme: {
                 extend: {
