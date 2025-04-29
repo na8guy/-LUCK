@@ -7,9 +7,10 @@
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@metamask/sdk@0.28.2/dist/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.2/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script> <!-- Added Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -27,17 +28,149 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Contract addresses and ABIs (unchanged)
+        // Contract addresses and ABIs
         const LOTTERY_CONTRACT_ADDRESS = '0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359';
         const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE';
         const CASHBACK_CONTRACT_ADDRESS = '0x8F597A098AA0943e8710c283358D9aA0e465C53D';
         const TOKEN_DISTRIBUTION_CONTRACT_ADDRESS = '0xb11aeE0628cdC3058502faF91fa8FC02686Cf2cc';
         const CHAIN_ID = 97;
 
-        const LOTTERY_CONTRACT_ABI = [/* Unchanged, as provided */];
-        const LUCK_TOKEN_ABI = [/* Unchanged, as provided */];
-        const CASHBACK_CONTRACT_ABI = [/* Unchanged, as provided */];
-        const TOKEN_DISTRIBUTION_CONTRACT_ABI = [/* Unchanged, as provided */];
+        const LOTTERY_CONTRACT_ABI = [
+            {
+                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
+                "name": "linkWallet",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
+                "name": "delinkWallet",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint32", "name": "lotteryId", "type": "uint32"},
+                    {"internalType": "uint256", "name": "numberOfTickets", "type": "uint256"}
+                ],
+                "name": "buyTickets",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "paused",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "name": "telegramIdToWallet",
+                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "ticketPrice",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "currentLotteryId",
+                "outputs": [{"internalType": "uint32", "name": "", "type": "uint32"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint32", "name": "lotteryId", "type": "uint32"}],
+                "name": "getLotteryInfo",
+                "outputs": [
+                    {"internalType": "uint256", "name": "startTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "endTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "resultTime", "type": "uint256"},
+                    {"internalType": "bool", "name": "lotteryEnded", "type": "bool"},
+                    {"internalType": "uint256", "name": "participants", "type": "uint256"},
+                    {"internalType": "uint256", "name": "prizePool", "type": "uint256"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        const LUCK_TOKEN_ABI = [
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "spender", "type": "address"},
+                    {"internalType": "uint256", "name": "amount", "type": "uint256"}
+                ],
+                "name": "approve",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        const CASHBACK_CONTRACT_ABI = [
+            {
+                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "name": "cashbackBalances",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "claimCashback",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ];
+
+        const TOKEN_DISTRIBUTION_CONTRACT_ABI = [
+            {
+                "inputs": [],
+                "name": "distributionAmount",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "distributionInterval",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "distributeTokens",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "name": "lastDistributionTime",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
 
         function App() {
             const [action, setAction] = useState('home');
@@ -63,6 +196,31 @@
             });
             const [showBuyTicketsForm, setShowBuyTicketsForm] = useState(false);
             const [buyTicketsForm, setBuyTicketsForm] = useState({ lotteryId: '', ticketCount: '' });
+            const [sdk, setSdk] = useState(null);
+
+            // Initialize MetaMask SDK
+            useEffect(() => {
+                const initializeSdk = async () => {
+                    try {
+                        const MMSDK = new MetaMaskSDK.MetaMaskSDK({
+                            dappMetadata: {
+                                name: 'Luckie Lottery',
+                                url: window.location.href,
+                                iconUrl: 'https://na8guy.github.io/-LUCK/favicon.ico'
+                            },
+                            logging: { sdk: true },
+                            checkInstallationImmediately: true,
+                            forceInjectProvider: true
+                        });
+                        await MMSDK.init();
+                        setSdk(MMSDK);
+                    } catch (err) {
+                        console.error('MetaMask SDK initialization error:', err);
+                        setError('Failed to initialize MetaMask SDK. Please try again.');
+                    }
+                };
+                initializeSdk();
+            }, []);
 
             // Initialize Telegram Web App and fetch lottery info
             useEffect(() => {
@@ -72,7 +230,7 @@
                     setTelegramUser(window.Telegram.WebApp.initDataUnsafe.user || {});
                 } else {
                     console.error('Telegram Web App SDK not loaded');
-                    setError('Telegram Web App SDK not loaded. Please ensure you are accessing this app via Telegram.');
+                    setError('Telegram Web App SDK not loaded. Please access via Telegram.');
                 }
 
                 const params = new URLSearchParams(window.location.search);
@@ -81,13 +239,18 @@
                 setLotteryId(params.get('lotteryId') || '');
                 setTicketCount(params.get('ticketCount') || '');
 
-                // Fetch lottery info and check wallet linking
                 const fetchLotteryInfo = async () => {
                     try {
                         const provider = new ethers.JsonRpcProvider('https://bsc-testnet-rpc.publicnode.com');
                         const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                        console.log('Lottery contract methods:', Object.keys(lotteryContract.functions));
                         const userIdInt = params.get('userId') ? parseInt(params.get('userId')) : 0;
-                        const linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
+                        let linkedWallet = '0x0000000000000000000000000000000000000000';
+                        if (typeof lotteryContract.telegramIdToWallet === 'function') {
+                            linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
+                        } else {
+                            console.warn('telegramIdToWallet not found in contract ABI');
+                        }
                         const ticketPrice = await lotteryContract.ticketPrice();
                         const isPaused = await lotteryContract.paused();
                         const currentLotteryId = await lotteryContract.currentLotteryId();
@@ -131,40 +294,35 @@
                 });
             };
 
-            // Connect wallet with MetaMask (desktop or mobile)
+            // Connect wallet with MetaMask SDK
             const connectWallet = async () => {
+                if (!sdk) {
+                    setError('MetaMask SDK not initialized. Please try again.');
+                    return null;
+                }
                 try {
                     setError('');
                     setStatus('Connecting to MetaMask...');
 
-                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                    const isTelegramMobile = window.Telegram && window.Telegram.WebApp;
-
-                    if (isMobile && isTelegramMobile && !window.ethereum) {
-                        window.location.href = 'metamask://';
-                        setStatus('Please open MetaMask and connect your wallet.');
-                        return null;
+                    const accounts = await sdk.connect();
+                    if (!accounts || accounts.length === 0) {
+                        throw new Error('No accounts returned by MetaMask.');
                     }
 
-                    if (!window.ethereum) {
-                        throw new Error('MetaMask is not installed. Please install it from https://metamask.io and try again.');
-                    }
-
-                    const provider = new ethers.BrowserProvider(window.ethereum);
-                    await provider.send('eth_requestAccounts', []);
+                    const provider = new ethers.BrowserProvider(sdk.getProvider());
                     const signer = await provider.getSigner();
-                    const address = await signer.getAddress();
+                    const address = accounts[0];
                     const currentChainId = Number((await provider.getNetwork()).chainId);
 
                     if (currentChainId !== CHAIN_ID) {
                         try {
-                            await window.ethereum.request({
+                            await sdk.getProvider().request({
                                 method: 'wallet_switchEthereumChain',
                                 params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
                             });
                         } catch (switchError) {
                             if (switchError.code === 4902) {
-                                await window.ethereum.request({
+                                await sdk.getProvider().request({
                                     method: 'wallet_addEthereumChain',
                                     params: [{
                                         chainId: `0x${CHAIN_ID.toString(16)}`,
@@ -182,16 +340,19 @@
 
                     setWalletAddress(address);
                     setStatus('Wallet connected! 🎉');
+                    triggerConfetti();
                     return { provider, signer, address };
                 } catch (err) {
                     console.error('Connect wallet error:', err);
                     let errorMessage = 'Failed to connect wallet';
                     if (err.code === 4001) {
                         errorMessage = 'Connection rejected by user';
-                    } else if (err.message.includes('MetaMask is not installed')) {
-                        errorMessage = err.message;
+                    } else if (err.message.includes('No accounts')) {
+                        errorMessage = 'No accounts available in MetaMask';
                     } else if (err.message.includes('Failed to switch')) {
                         errorMessage = err.message;
+                    } else {
+                        errorMessage = `Failed to connect wallet: ${err.message}`;
                     }
                     setError(errorMessage);
                     setStatus('');
@@ -203,8 +364,9 @@
             const disconnectWallet = () => {
                 setWalletAddress('');
                 setIsWalletLinked(false);
-                if (window.ethereum) {
-                    window.ethereum.removeAllListeners();
+                if (sdk) {
+                    sdk.terminate();
+                    setSdk(null);
                 }
                 setStatus('Wallet delinked! Please disconnect MetaMask manually if needed. 🎉');
                 triggerConfetti();
@@ -231,7 +393,6 @@
                     const cashbackContract = new ethers.Contract(CASHBACK_CONTRACT_ADDRESS, CASHBACK_CONTRACT_ABI, signer);
                     const tokenDistributionContract = new ethers.Contract(TOKEN_DISTRIBUTION_CONTRACT_ADDRESS, TOKEN_DISTRIBUTION_CONTRACT_ABI, signer);
 
-                    // Skip pause check for delink_wallet
                     if (lotteryInfo.isPaused && actionToExecute !== 'claim_cashback' && actionToExecute !== 'token_distribution' && actionToExecute !== 'delink_wallet') {
                         throw new Error('Lottery contract is paused. Try again later.');
                     }
@@ -239,6 +400,9 @@
                     let tx;
                     switch (actionToExecute) {
                         case 'set_wallet': {
+                            if (typeof lotteryContract.telegramIdToWallet !== 'function') {
+                                throw new Error('telegramIdToWallet not supported by the contract.');
+                            }
                             const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
                             if (existingWallet !== '0x0000000000000000000000000000000000000000' &&
                                 existingWallet.toLowerCase() !== address.toLowerCase()) {
@@ -259,8 +423,17 @@
                             if (balance < totalCost) {
                                 throw new Error(`Insufficient $LUCK balance: ${ethers.formatEther(balance)} available, ${ethers.formatEther(totalCost)} needed.`);
                             }
+
+                            // Request token approval
+                            setStatus('Requesting token approval...');
                             tx = await luckTokenContract.approve(LOTTERY_CONTRACT_ADDRESS, totalCost, { gasLimit: 100000 });
-                            await tx.wait();
+                            const approvalReceipt = await tx.wait();
+                            if (approvalReceipt.status !== 1) {
+                                throw new Error('Token approval failed.');
+                            }
+                            setStatus('Token approval successful! Processing ticket purchase...');
+
+                            // Buy tickets
                             tx = await lotteryContract.buyTickets(parseInt(buyTicketsForm.lotteryId), parseInt(buyTicketsForm.ticketCount), { gasLimit: 300000 });
                             break;
                         }
@@ -288,6 +461,9 @@
                             break;
                         }
                         case 'delink_wallet': {
+                            if (typeof lotteryContract.telegramIdToWallet !== 'function') {
+                                throw new Error('telegramIdToWallet not supported by the contract.');
+                            }
                             const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
                             if (existingWallet === '0x0000000000000000000000000000000000000000') {
                                 throw new Error('No wallet linked to this Telegram ID.');
@@ -295,9 +471,7 @@
                             if (existingWallet.toLowerCase() !== address.toLowerCase()) {
                                 throw new Error(`Connected wallet (${address}) does not match linked wallet (${existingWallet}).`);
                             }
-                            console.log('Delinking wallet for Telegram ID:', userId, 'Wallet:', address);
                             tx = await lotteryContract.delinkWallet(parseInt(userId), { gasLimit: 200000 });
-                            console.log('Delink transaction sent:', tx.hash);
                             break;
                         }
                         default:
@@ -305,11 +479,11 @@
                     }
 
                     const receipt = await tx.wait();
-                    console.log('Transaction confirmed:', receipt.hash);
                     setStatus(`Transaction successful! Hash: ${receipt.hash} 🎉`);
-                    window.Telegram.WebApp.showAlert('Transaction completed successfully!');
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        window.Telegram.WebApp.showAlert('Transaction completed successfully!');
+                    }
 
-                    // Send data to bot for delink_wallet
                     if (actionToExecute === 'delink_wallet' && window.Telegram && window.Telegram.WebApp) {
                         window.Telegram.WebApp.sendData(JSON.stringify({
                             action: 'delink_wallet',
@@ -339,7 +513,9 @@
                     }
                     setError(`Error: ${errorMessage}`);
                     setStatus('');
-                    window.Telegram.WebApp.showAlert(`Error: ${errorMessage}`);
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        window.Telegram.WebApp.showAlert(`Error: ${errorMessage}`);
+                    }
                 }
             };
 
@@ -492,7 +668,7 @@
             );
         }
 
-        // Tailwind animation for fade-in (unchanged)
+        // Tailwind animation for fade-in
         tailwind.config = {
             theme: {
                 extend: {
