@@ -1,272 +1,903 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="Generate MetaMask mobile deeplinks on the fly">
-    <meta name="author" content="Bruno Barbieri">
-
-    <title>MetaMask deep link generator</title>
-
-    <!-- Bootstrap core CSS -->
-    <link href="https://getbootstrap.com/docs/4.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Custom styles for this template -->
-    <link href="https://getbootstrap.com/docs/4.0/examples/album/album.css" rel="stylesheet">
-    <script src='https://github.com/MetaMask/metamask-deeplinks/tree/master/js/bundle.js'></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luckie Lottery Web App</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.2/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@metamask/sdk@0.28.2/dist/browser/iife/metamask-sdk.js"></script>
     <style>
-        #url {
-            margin-top: 20px;
-            display: block;
-            margin-bottom: 30px;
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        .field {
+        .gradient-bg {
+            background: linear-gradient(135deg, #FFD700 0%, #28A745 50%, #6B46C1 100%);
+        }
+        .debug-console {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #1a202c;
+            color: #e2e8f0;
             padding: 10px;
-            font-size: 17px;
-            border-radius: 5px;
-            border: 1px solid #CACACA;
-        }
-        .short-field {
-            flex: 1;
-            display: flex;
-        }
-
-        .short-field:first-child{
-            margin-right: 15px;
-        }
-        .long-field {
-            width: 100%; 
-        }
-        .center {
-            width: 150px;
-            margin: auto;
-            display: block;
-        }
-        .param-row { 
-            display: flex;
-        }
-        
-        #dapp-form, #payment-request-form, #reset, #payment-request {
-            display: none;
-        }
-     
-        .field {
-            padding: 10px;
-            font-size: 17px;
-            border-radius: 5px;
-            border: 1px solid #CACACA;
-        }
-        
-        .short-field {
-            flex: 1;
-            display: flex;
-        }
-        
-        .short-field:first-child {
-            margin-right: 15px;
-        }
-        
-        .long-field {
-            width: 100%;
-        }
-        
-        .center {
-            width: 150px;
-            margin: auto;
-            display: block;
-        }
-        
-        .param-row {
-            display: flex;
-        }
-        
-        #payment-request{
-            margin-bottom: 30px;
-        }
-
-        #form,
-        #payment-channel-request-form,
-        #reset {
-            display: none;
-        }
-        .field {
-            padding: 10px;
-            font-size: 17px;
-            border-radius: 5px;
-            border: 1px solid #CACACA;
-        }
-        .short-field {
-            flex: 1;
-            display: flex;
-        }
-
-        .short-field:first-child{
-            margin-right: 15px;
-        }
-        .long-field {
-            width: 100%;
-        }
-        .center {
-            width: 150px;
-            margin: auto;
-            display: block;
-        }
-        .param-row {
-            display: flex;
-        }
-
-        #form, #reset {
-            display: none;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
         }
     </style>
 </head>
+<body className="gradient-bg">
+    <div id="root"></div>
 
-<body>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-    <main role="main">
-        <section class="jumbotron text-center">
-            <div class="container">
-                <h1 class="jumbotron-heading">MetaMask deep link generator</h1>
-                <p class="lead text-muted">Generate MetaMask mobile deeplinks on the fly!</p>
-                <br />
-                <br />
-                <div id='buttons'>
-                    <h4 class="text-muted">What kind of deeplink do you want to generate?</h4>
-                    <br />
-                    <p>
-                        <a href="#" class="btn btn-success" onclick="showView('dapp')">Open a dapp</a>
-                        <a href="#" class="btn btn-primary" onclick="showView('payment-request')">Payment Request</a>
-                        <a href="#" class="btn btn-warning" onclick="showView('payment-channel-request')">Payment Channel Request</a>
-                    </p>
-                </div>
-                <div id='payment-request'>
-                    <h4 class="text-muted">What kind of payment request do you want to generate?</h4>
-                    <br />
-                    <p>
-                        <a href="#" class="btn btn-primary" onclick="showView('ether')">ETH Payment</a>
-                        <a href="#" class="btn btn-success" onclick="showView('erc20')">ERC20 token transfer</a>
-                    </p>
-                </div>
-                <div id='reset'>
-                    <a href='javascript:void(0)' onclick={window.location.reload()}>Start again</a>
-                </div>
-            </div>
-        </section>
-        <section>
-            <div class="container">
-                    <div id='dapp-form'>
-                    <div class="row">
-                        <div class="col-md-2"></div>
-                        <div class="col-md-8 text-center">
-                            <p>
-                                Enter your dApp url: 
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='dapp_url' id='dapp_url' placeholder='For ex. https://uniswap.exchange' />
-                            </p>
-                        </div>                        
-                        <div class="col-md-2"></div>
-                    </div>
-                    <div class="row">
-                        <hr />
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12 text-center">
-                            <p>
-                                <a href="javascript:void(0)" class="btn btn-success" onclick="generateDappUrl()">Generate URL</a>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                <div id='payment-request-form'>
-                    <div class="row">
-                        <div class="col-md-1 text-center"></div>
-                        <div class="col-md-5">
-                            <p id='payment-link'>
-                                Is this a payment link?
-                                <input type='checkbox' name='is_payment' id='is_payment' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='target_address' id='target_address' placeholder='Target address' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field short-field" type='text' name='decimals' id='decimals' placeholder='Decimals (default 18)' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field short-field" type='text' name='chain_id' id='chain_id' placeholder='Chain id (optional)' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='function_name' id='function_name' placeholder='Function name (optional)' />
-                            </p>
-                        </div>
-                        <div class="col-md-5 text-center">
-                            <p>
-                                <a id='add_parameter' href="#" class="" onclick="addNewParam()">+ Add parameter</a>
-                            </p>
-                            <div id="params-container"></div>
-                        </div>
-                        <div class="col-md-1 text-center"></div>
-                    </div>
-                    <div class="row">
-                        <hr />
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12 text-center">
-                            <p>
-                                <a href="javascript:void(0)" class="btn btn-success" onclick="generatePaymentUrl()">Generate URL</a>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                <div id='payment-channel-request-form'>
-                    <div class="row">
-                        <div class="col-md-2 text-center"></div>
-                        <div class="col-md-2 text-center"></div>
-                        <div class="col-md-5">
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='pc_target' id='pc_target' placeholder='Target address' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='pc_amount' id='pc_amount' placeholder='amount in DAI' />
-                            </p>
-                            <p>
-                                <input autocapitalize="off" class="field long-field" type='text' name='pc_detail' id='pc_detail' placeholder='Detail (optional)' />
-                            </p>
-                        </div>
-                        
-                    </div>
-                    <div class="row">
-                        <hr />
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12 text-center">
-                            <p>
-                                <a href="javascript:void(0)" class="btn btn-success" onclick="generatePaymentChannelRequestUrl()">Generate URL</a>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12 text-center">
-                <a id='url' ></a>
-                <p id='qr-wrapper'></p>
-            </div>
-        </div>
-      </section>
-    </main>
+        // Contract addresses and ABIs
+        const LOTTERY_CONTRACT_ADDRESS = '0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359';
+        const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE';
+        const CASHBACK_CONTRACT_ADDRESS = '0x8F597A098AA0943e8710c283358D9aA0e465C53D';
+        const TOKEN_DISTRIBUTION_CONTRACT_ADDRESS = '0xb11aeE0628cdC3058502faF91fa8FC02686Cf2cc';
+        const CHAIN_ID = 97;
+        const BSC_TESTNET_RPCS = [
+            'https://bsc-testnet-rpc.publicnode.com',
+            'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+            'https://bsc-testnet.bnbchain.org'
+        ];
 
-    <!-- Bootstrap core JavaScript
-    ================================================== -->
-    <!-- Placed at the end of the document so the pages load faster -->
-    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
-    <script>
-        window.jQuery || document.write('<script src="https://getbootstrap.com/docs/4.0/assets/js/vendor/jquery-slim.min.js"><\/script>')
+        const LOTTERY_CONTRACT_ABI = [
+            {
+                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
+                "name": "linkWallet",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint256", "name": "telegramId", "type": "uint256"}],
+                "name": "delinkWallet",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint32", "name": "lotteryId", "type": "uint32"},
+                    {"internalType": "uint256", "name": "numberOfTickets", "type": "uint256"}
+                ],
+                "name": "buyTickets",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "paused",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "name": "telegramIdToWallet",
+                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "ticketPrice",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "currentLotteryId",
+                "outputs": [{"internalType": "uint32", "name": "", "type": "uint32"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint32", "name": "lotteryId", "type": "uint32"}],
+                "name": "getLotteryInfo",
+                "outputs": [
+                    {"internalType": "uint256", "name": "", "type": "uint256"},
+                    {"internalType": "uint256", "name": "", "type": "uint256"},
+                    {"internalType": "uint256", "name": "", "type": "uint256"},
+                    {"internalType": "bool", "name": "", "type": "bool"},
+                    {"internalType": "uint256", "name": "", "type": "uint256"},
+                    {"internalType": "uint256", "name": "", "type": "uint256"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        const LUCK_TOKEN_ABI = [
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "spender", "type": "address"},
+                    {"internalType": "uint256", "name": "amount", "type": "uint256"}
+                ],
+                "name": "approve",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        const CASHBACK_CONTRACT_ABI = [
+            {
+                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "name": "cashbackBalances",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "claimCashback",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ];
+
+        const TOKEN_DISTRIBUTION_CONTRACT_ABI = [
+            {
+                "inputs": [],
+                "name": "distributionAmount",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "distributionInterval",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "distributeTokens",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "name": "lastDistributionTime",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        function App() {
+            const [action, setAction] = useState('home');
+            const [userId, setUserId] = useState('');
+            const [lotteryId, setLotteryId] = useState('');
+            const [ticketCount, setTicketCount] = useState('');
+            const [walletAddress, setWalletAddress] = useState('');
+            const [error, setError] = useState('');
+            const [status, setStatus] = useState('');
+            const [telegramUser, setTelegramUser] = useState(null);
+            const [isWalletLinked, setIsWalletLinked] = useState(false);
+            const [lotteryInfo, setLotteryInfo] = useState({
+                currentLotteryId: '0',
+                ticketPrice: '0',
+                isPaused: false,
+                startTime: '0',
+                endTime: '0',
+                resultTime: '0',
+                lotteryEnded: false,
+                participants: '0',
+                prizePool: '0',
+                active: false
+            });
+            const [showBuyTicketsForm, setShowBuyTicketsForm] = useState(false);
+            const [buyTicketsForm, setBuyTicketsForm] = useState({ lotteryId: '', ticketCount: '' });
+            const [sdk, setSdk] = useState(null);
+            const [debugLogs, setDebugLogs] = useState([]);
+            const [showDebugConsole, setShowDebugConsole] = useState(false);
+
+            // Custom logging function with BigInt handling
+            const logToConsole = (message, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString();
+                const serializedMessage = typeof message === 'object'
+                    ? JSON.stringify(message, (key, value) =>
+                        typeof value === 'bigint' ? value.toString() : value
+                      )
+                    : message;
+                setDebugLogs(prev => [...prev, { timestamp, message: serializedMessage, type }]);
+                console.log(`[${timestamp}] ${type.toUpperCase()}: ${serializedMessage}`);
+            };
+
+            // Initialize wallet provider (MetaMask SDK, window.ethereum, or Telegram Wallet)
+            useEffect(() => {
+                const initializeWallet = async () => {
+                    try {
+                        let provider = null;
+                        let sdkInstance = null;
+
+                        // Try MetaMask SDK
+                        try {
+                            logToConsole('Attempting to initialize MetaMask SDK...');
+                            sdkInstance = new MetaMaskSDK.MetaMaskSDK({
+                                logging: { developerMode: true },
+                                dappMetadata: {
+                                    name: 'Luckie Lottery',
+                                    url: window.location.href,
+                                    iconUrl: 'https://na8guy.github.io/-LUCK/favicon.ico'
+                                },
+                                checkInstallationImmediately: true,
+                                forceInjectProvider: true
+                            });
+                            logToConsole('MetaMask SDK initialized', 'success');
+                            provider = sdkInstance.getProvider();
+                            if (provider) {
+                                logToConsole('MetaMask SDK provider detected', 'success');
+                            } else {
+                                logToConsole('MetaMask SDK provider not detected', 'warn');
+                            }
+                        } catch (sdkErr) {
+                            logToConsole(`MetaMask SDK initialization failed: ${sdkErr.message}`, 'error');
+                        }
+
+                        // Fallback to window.ethereum
+                        if (!provider && window.ethereum) {
+                            logToConsole('window.ethereum detected', 'success');
+                            provider = window.ethereum;
+                        }
+
+                        // Fallback to Telegram Wallet
+                        if (!provider && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.Wallet) {
+                            logToConsole('Telegram Wallet detected', 'success');
+                            provider = window.Telegram.WebApp.Wallet;
+                        }
+
+                        if (!provider) {
+                            logToConsole('No wallet provider detected. Please install MetaMask, use Telegram Wallet, or access via a supported wallet.', 'error');
+                            setError('No wallet provider detected. Please install MetaMask from https://metamask.io, use Telegram Wallet, or access via a supported wallet.');
+                            return;
+                        }
+
+                        setSdk({
+                            getProvider: () => provider,
+                            connect: async () => {
+                                if (sdkInstance) {
+                                    return await sdkInstance.connect();
+                                }
+                                return await provider.request({ method: 'eth_requestAccounts' });
+                            },
+                            terminate: () => {
+                                if (sdkInstance) {
+                                    sdkInstance.terminate();
+                                }
+                            }
+                        });
+                        logToConsole('Wallet provider initialized', 'success');
+                    } catch (err) {
+                        logToConsole(`Wallet initialization failed: ${err.message}`, 'error');
+                        setError(`Failed to initialize wallet: ${err.message}`);
+                    }
+                };
+                initializeWallet();
+            }, []);
+
+            // Initialize Telegram Web App and fetch lottery info
+            useEffect(() => {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    logToConsole('Telegram Web App SDK loaded');
+                    window.Telegram.WebApp.ready();
+                    window.Telegram.WebApp.expand();
+                    setTelegramUser(window.Telegram.WebApp.initDataUnsafe.user || {});
+                } else {
+                    logToConsole('Telegram Web App SDK not loaded', 'error');
+                    setError('Telegram Web App SDK not loaded. Please access via Telegram.');
+                }
+
+                const params = new URLSearchParams(window.location.search);
+                setUserId(params.get('userId') || '');
+                setAction(params.get('action') || 'home');
+                setLotteryId(params.get('lotteryId') || '');
+                setTicketCount(params.get('ticketCount') || '');
+                logToConsole(`URL Params - userId: ${params.get('userId')}, action: ${params.get('action')}`);
+
+                const fetchLotteryInfo = async () => {
+                    try {
+                        logToConsole('Fetching lottery info...');
+                        let provider;
+                        for (const rpc of BSC_TESTNET_RPCS) {
+                            try {
+                                provider = new ethers.JsonRpcProvider(rpc);
+                                const network = await provider.getNetwork();
+                                logToConsole(`Connected to RPC ${rpc}, chain ID: ${network.chainId}`);
+                                break;
+                            } catch (rpcErr) {
+                                logToConsole(`Failed to connect to RPC ${rpc}: ${rpcErr.message}`, 'warn');
+                            }
+                        }
+                        if (!provider) {
+                            throw new Error('All BSC Testnet RPCs failed. Please check your network.');
+                        }
+
+                        // Validate contract address
+                        if (!ethers.isAddress(LOTTERY_CONTRACT_ADDRESS)) {
+                            logToConsole(`Invalid contract address: ${LOTTERY_CONTRACT_ADDRESS}`, 'error');
+                            throw new Error('Invalid contract address. Please verify on BSC Testnet Explorer.');
+                        }
+                        logToConsole(`Contract address validated: ${LOTTERY_CONTRACT_ADDRESS}`, 'info');
+
+                        let lotteryContract;
+                        try {
+                            lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
+                            const functionNames = lotteryContract.interface.fragments
+                                .filter(frag => frag.type === 'function')
+                                .map(frag => frag.name);
+                            logToConsole(`Lottery contract functions: ${functionNames.join(', ')}`);
+                        } catch (contractErr) {
+                            logToConsole(`Failed to initialize lottery contract: ${contractErr.message}`, 'error');
+                            throw new Error('Invalid contract address or ABI. Please verify on BSC Testnet Explorer.');
+                        }
+
+                        const userIdInt = params.get('userId') ? parseInt(params.get('userId')) : 0;
+                        let linkedWallet = '0x0000000000000000000000000000000000000000';
+                        try {
+                            if (lotteryContract.interface.getFunction('telegramIdToWallet')) {
+                                linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
+                                logToConsole(`Linked wallet for userId ${userIdInt}: ${linkedWallet}`);
+                            } else {
+                                logToConsole('telegramIdToWallet not found in contract ABI', 'warn');
+                            }
+                        } catch (walletErr) {
+                            logToConsole(`Failed to fetch telegramIdToWallet: ${walletErr.message}`, 'warn');
+                        }
+
+                        // Fetch contract data
+                        const ticketPrice = await lotteryContract.ticketPrice();
+                        const isPaused = await lotteryContract.paused();
+                        const currentLotteryId = await lotteryContract.currentLotteryId();
+                        let lotteryDetails;
+                        try {
+                            lotteryDetails = await lotteryContract.getLotteryInfo(currentLotteryId);
+                            logToConsole(`getLotteryInfo raw response: ${JSON.stringify(lotteryDetails, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`, 'info');
+                        } catch (lotteryErr) {
+                            logToConsole(`Failed to fetch getLotteryInfo: ${lotteryErr.message}`, 'error');
+                            throw new Error('Failed to fetch lottery info. ABI may be incorrect.');
+                        }
+
+                        // Handle array response
+                        let startTime, endTime, resultTime, lotteryEnded, participants, prizePool;
+                        if (Array.isArray(lotteryDetails) && lotteryDetails.length >= 6) {
+                            [startTime, endTime, resultTime, lotteryEnded, participants, prizePool] = lotteryDetails;
+                            logToConsole('getLotteryInfo returned array', 'info');
+                        } else {
+                            logToConsole('getLotteryInfo returned invalid data', 'error');
+                            throw new Error('Invalid getLotteryInfo response. Please verify contract ABI.');
+                        }
+
+                        const blockTimestamp = (await provider.getBlock('latest')).timestamp;
+
+                        setLotteryInfo({
+                            currentLotteryId: currentLotteryId.toString(),
+                            ticketPrice: ethers.formatEther(ticketPrice),
+                            isPaused,
+                            startTime: startTime.toString(),
+                            endTime: endTime.toString(),
+                            resultTime: resultTime.toString(),
+                            lotteryEnded,
+                            participants: participants.toString(),
+                            prizePool: ethers.formatEther(prizePool),
+                            active: !lotteryEnded &&
+                                    blockTimestamp >= parseInt(startTime) &&
+                                    blockTimestamp < parseInt(endTime)
+                        });
+
+                        if (linkedWallet !== '0x0000000000000000000000000000000000000000') {
+                            setIsWalletLinked(true);
+                            setWalletAddress(linkedWallet);
+                        }
+                        logToConsole('Lottery info fetched successfully', 'success');
+                    } catch (err) {
+                        logToConsole(`Fetch lottery info failed: ${err.message}`, 'error');
+                        setError(`Failed to fetch lottery info: ${err.message}`);
+                    }
+                };
+                fetchLotteryInfo();
+            }, []);
+
+            // Trigger confetti animation
+            const triggerConfetti = () => {
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    colors: ['#FFD700', '#28A745', '#6B46C1']
+                });
+            };
+
+            // Connect wallet
+            const connectWallet = async () => {
+                if (!sdk) {
+                    logToConsole('Wallet provider not initialized', 'error');
+                    setError('Wallet provider not available. Please install MetaMask from https://metamask.io, use Telegram Wallet, or access via a supported wallet.');
+                    return null;
+                }
+                try {
+                    setError('');
+                    setStatus('Connecting to wallet...');
+                    logToConsole('Attempting to connect wallet');
+
+                    const providerAvailable = sdk.getProvider();
+                    if (!providerAvailable) {
+                        logToConsole('Wallet provider not detected', 'error');
+                        throw new Error('Wallet provider not detected. Please ensure MetaMask or Telegram Wallet is installed.');
+                    }
+                    logToConsole('Wallet provider detected');
+
+                    const accounts = await sdk.connect();
+                    if (!accounts || accounts.length === 0) {
+                        logToConsole('No accounts returned', 'error');
+                        throw new Error('No accounts returned by wallet.');
+                    }
+                    logToConsole(`Connected account: ${accounts[0]}`);
+
+                    const provider = new ethers.BrowserProvider(sdk.getProvider());
+                    const signer = await provider.getSigner();
+                    const address = accounts[0];
+                    const currentChainId = Number((await provider.getNetwork()).chainId);
+                    logToConsole(`Current chain ID: ${currentChainId}`);
+
+                    if (currentChainId !== CHAIN_ID) {
+                        logToConsole(`Switching to chain ID ${CHAIN_ID} (BSC Testnet)`);
+                        try {
+                            await sdk.getProvider().request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }],
+                            });
+                            logToConsole('Network switched successfully', 'success');
+                        } catch (switchError) {
+                            if (switchError.code === 4902) {
+                                logToConsole('Adding BSC Testnet to wallet');
+                                await sdk.getProvider().request({
+                                    method: 'wallet_addEthereumChain',
+                                    params: [{
+                                        chainId: `0x${CHAIN_ID.toString(16)}`,
+                                        chainName: 'BNB Chain Testnet',
+                                        rpcUrls: ['https://bsc-testnet-rpc.publicnode.com'],
+                                        nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                                        blockExplorerUrls: ['https://testnet.bscscan.com']
+                                    }],
+                                });
+                                logToConsole('BSC Testnet added successfully', 'success');
+                            } else {
+                                logToConsole(`Network switch failed: ${switchError.message}`, 'error');
+                                throw new Error('Failed to switch to BSC Testnet. Please switch manually in your wallet.');
+                            }
+                        }
+                    }
+
+                    setWalletAddress(address);
+                    setStatus('Wallet connected! 🎉');
+                    logToConsole(`Wallet connected: ${address}`, 'success');
+                    triggerConfetti();
+                    return { provider, signer, address };
+                } catch (err) {
+                    logToConsole(`Connect wallet error: ${err.message} (Code: ${err.code})`, 'error');
+                    let errorMessage = 'Failed to connect wallet';
+                    if (err.code === 4001) {
+                        errorMessage = 'Connection rejected by user';
+                    } else if (err.message.includes('No accounts')) {
+                        errorMessage = 'No accounts available in wallet. Please add an account.';
+                    } else if (err.message.includes('Wallet provider not detected')) {
+                        errorMessage = 'Wallet provider not installed. Please install MetaMask from https://metamask.io or use Telegram Wallet.';
+                    } else if (err.message.includes('Failed to switch')) {
+                        errorMessage = err.message;
+                    } else {
+                        errorMessage = `Failed to connect wallet: ${err.message}`;
+                    }
+                    setError(errorMessage);
+                    setStatus('');
+                    return null;
+                }
+            };
+
+            // Disconnect wallet
+            const disconnectWallet = () => {
+                setWalletAddress('');
+                setIsWalletLinked(false);
+                if (sdk) {
+                    sdk.terminate();
+                    setSdk(null);
+                    logToConsole('Wallet provider terminated', 'success');
+                }
+                setStatus('Wallet delinked! Please disconnect your wallet manually if needed. 🎉');
+                logToConsole('Wallet disconnected from UI', 'success');
+                triggerConfetti();
+            };
+
+            // Execute blockchain actions
+            const executeAction = async (actionToExecute) => {
+                try {
+                    setError('');
+                    setStatus('Processing transaction...');
+                    logToConsole(`Executing action: ${actionToExecute}`);
+
+                    if (!userId || isNaN(parseInt(userId))) {
+                        logToConsole('Invalid Telegram User ID', 'error');
+                        throw new Error('Invalid Telegram User ID.');
+                    }
+
+                    const wallet = await connectWallet();
+                    if (!wallet) {
+                        logToConsole('Wallet connection failed', 'error');
+                        throw new Error('Wallet connection failed.');
+                    }
+                    const { provider, signer, address } = wallet;
+                    logToConsole(`Using wallet address: ${address}`);
+
+                    const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, signer);
+                    const luckTokenContract = new ethers.Contract(LUCK_TOKEN_ADDRESS, LUCK_TOKEN_ABI, signer);
+                    const cashbackContract = new ethers.Contract(CASHBACK_CONTRACT_ADDRESS, CASHBACK_CONTRACT_ABI, signer);
+                    const tokenDistributionContract = new ethers.Contract(TOKEN_DISTRIBUTION_CONTRACT_ADDRESS, TOKEN_DISTRIBUTION_CONTRACT_ABI, signer);
+
+                    if (lotteryInfo.isPaused && actionToExecute !== 'claim_cashback' && actionToExecute !== 'token_distribution' && actionToExecute !== 'delink_wallet') {
+                        logToConsole('Lottery contract is paused', 'error');
+                        throw new Error('Lottery contract is paused. Try again later.');
+                    }
+
+                    let tx;
+                    switch (actionToExecute) {
+                        case 'set_wallet': {
+                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
+                                logToConsole('telegramIdToWallet not supported by contract', 'error');
+                                throw new Error('telegramIdToWallet not supported by the contract.');
+                            }
+                            const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
+                            logToConsole(`Existing wallet for userId ${userId}: ${existingWallet}`);
+                            if (existingWallet !== '0x0000000000000000000000000000000000000000' &&
+                                existingWallet.toLowerCase() !== address.toLowerCase()) {
+                                logToConsole(`Telegram ID linked to another wallet: ${existingWallet}`, 'error');
+                                throw new Error(`This Telegram ID is linked to another wallet (${existingWallet}).`);
+                            }
+                            tx = await lotteryContract.linkWallet(parseInt(userId), { gasLimit: 200000 });
+                            logToConsole(`linkWallet transaction sent: ${tx.hash}`);
+                            break;
+                        }
+                        case 'buy_tickets': {
+                            if (!buyTicketsForm.lotteryId || isNaN(parseInt(buyTicketsForm.lotteryId)) ||
+                                !buyTicketsForm.ticketCount || isNaN(parseInt(buyTicketsForm.ticketCount)) ||
+                                parseInt(buyTicketsForm.ticketCount) <= 0) {
+                                logToConsole('Invalid lottery ID or ticket count', 'error');
+                                throw new Error('Invalid lottery ID or ticket count.');
+                            }
+                            const ticketPrice = await lotteryContract.ticketPrice();
+                            const totalCost = ticketPrice * BigInt(buyTicketsForm.ticketCount);
+                            const balance = await luckTokenContract.balanceOf(address);
+                            logToConsole(`Ticket price: ${ethers.formatEther(ticketPrice)}, Total cost: ${ethers.formatEther(totalCost)}, Balance: ${ethers.formatEther(balance)}`);
+                            if (balance < totalCost) {
+                                logToConsole(`Insufficient $LUCK balance`, 'error');
+                                throw new Error(`Insufficient $LUCK balance: ${ethers.formatEther(balance)} available, ${ethers.formatEther(totalCost)} needed.`);
+                            }
+
+                            setStatus('Requesting token approval...');
+                            tx = await luckTokenContract.approve(LOTTERY_CONTRACT_ADDRESS, totalCost, { gasLimit: 100000 });
+                            const approvalReceipt = await tx.wait();
+                            logToConsole(`Token approval transaction: ${tx.hash}, Status: ${approvalReceipt.status}`);
+                            if (approvalReceipt.status !== 1) {
+                                logToConsole('Token approval failed', 'error');
+                                throw new Error('Token approval failed.');
+                            }
+                            setStatus('Token approval successful! Processing ticket purchase...');
+
+                            tx = await lotteryContract.buyTickets(parseInt(buyTicketsForm.lotteryId), parseInt(buyTicketsForm.ticketCount), { gasLimit: 300000 });
+                            logToConsole(`buyTickets transaction sent: ${tx.hash}`);
+                            break;
+                        }
+                        case 'claim_cashback': {
+                            const cashbackBalance = await cashbackContract.cashbackBalances(address);
+                            logToConsole(`Cashback balance: ${ethers.formatEther(cashbackBalance)}`);
+                            if (cashbackBalance === 0n) {
+                                logToConsole('No cashback available', 'error');
+                                throw new Error('No cashback available to claim.');
+                            }
+                            tx = await cashbackContract.claimCashback({ gasLimit: 200000 });
+                            logToConsole(`claimCashback transaction sent: ${tx.hash}`);
+                            break;
+                        }
+                        case 'token_distribution': {
+                            const lastDistributionTime = await tokenDistributionContract.lastDistributionTime(address);
+                            const distributionInterval = await tokenDistributionContract.distributionInterval();
+                            const currentTime = Math.floor(Date.now() / 1000);
+                            logToConsole(`Last distribution: ${lastDistributionTime}, Interval: ${distributionInterval}, Current time: ${currentTime}`);
+                            if (lastDistributionTime > 0 && (currentTime - lastDistributionTime) < distributionInterval) {
+                                const nextTime = new Date((lastDistributionTime + distributionInterval) * 1000).toUTCString();
+                                logToConsole(`Next distribution available after ${nextTime}`, 'error');
+                                throw new Error(`Next distribution available after ${nextTime}.`);
+                            }
+                            const amount = await tokenDistributionContract.distributionAmount();
+                            logToConsole(`Distribution amount: ${ethers.formatEther(amount)}`);
+                            if (amount === 0n) {
+                                logToConsole('No tokens available for distribution', 'error');
+                                throw new Error('No tokens available for distribution.');
+                            }
+                            tx = await tokenDistributionContract.distributeTokens({ gasLimit: 200000 });
+                            logToConsole(`distributeTokens transaction sent: ${tx.hash}`);
+                            break;
+                        }
+                        case 'delink_wallet': {
+                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
+                                logToConsole('telegramIdToWallet not supported by contract', 'error');
+                                throw new Error('telegramIdToWallet not supported by the contract.');
+                            }
+                            const existingWallet = await lotteryContract.telegramIdToWallet(parseInt(userId));
+                            logToConsole(`Existing wallet for userId ${userId}: ${existingWallet}`);
+                            if (existingWallet === '0x0000000000000000000000000000000000000000') {
+                                logToConsole('No wallet linked to this Telegram ID', 'error');
+                                throw new Error('No wallet linked to this Telegram ID.');
+                            }
+                            if (existingWallet.toLowerCase() !== address.toLowerCase()) {
+                                logToConsole(`Connected wallet (${address}) does not match linked wallet (${existingWallet})`, 'error');
+                                throw new Error(`Connected wallet (${address}) does not match linked wallet (${existingWallet}).`);
+                            }
+                            tx = await lotteryContract.delinkWallet(parseInt(userId), { gasLimit: 200000 });
+                            logToConsole(`delinkWallet transaction sent: ${tx.hash}`);
+                            break;
+                        }
+                        default:
+                            logToConsole('Invalid action specified', 'error');
+                            throw new Error('Invalid action specified.');
+                    }
+
+                    const receipt = await tx.wait();
+                    logToConsole(`Transaction confirmed: ${receipt.hash}`, 'success');
+                    setStatus(`Transaction successful! Hash: ${receipt.hash} 🎉`);
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        window.Telegram.WebApp.showAlert('Transaction completed successfully!');
+                    }
+
+                    if (actionToExecute === 'delink_wallet' && window.Telegram && window.Telegram.WebApp) {
+                        logToConsole('Sending delink_wallet data to Telegram bot');
+                        window.Telegram.WebApp.sendData(JSON.stringify({
+                            action: 'delink_wallet',
+                            userId: userId,
+                            success: true,
+                            txHash: receipt.hash
+                        }));
+                    }
+
+                    if (actionToExecute === 'set_wallet') {
+                        setIsWalletLinked(true);
+                        triggerConfetti();
+                    } else if (actionToExecute === 'delink_wallet') {
+                        disconnectWallet();
+                    }
+                    if (actionToExecute === 'buy_tickets') {
+                        setShowBuyTicketsForm(false);
+                        setBuyTicketsForm({ lotteryId: '', ticketCount: '' });
+                    }
+                } catch (err) {
+                    logToConsole(`Execute action error: ${err.message} (Code: ${err.code})`, 'error');
+                    let errorMessage = err.message || 'Transaction failed';
+                    if (err.code === 4001) {
+                        errorMessage = 'Transaction rejected by user';
+                    } else if (err.reason) {
+                        errorMessage = err.reason;
+                    }
+                    setError(`Error: ${errorMessage}`);
+                    setStatus('');
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        window.Telegram.WebApp.showAlert(`Error: ${errorMessage}`);
+                    }
+                }
+            };
+
+            // Handle Buy Tickets form submission
+            const handleBuyTicketsSubmit = (e) => {
+                e.preventDefault();
+                logToConsole('Submitting buy tickets form');
+                executeAction('buy_tickets');
+            };
+
+            // Format timestamp to readable date
+            const formatTimestamp = (timestamp) => {
+                if (!timestamp || timestamp === '0') return 'N/A';
+                return new Date(parseInt(timestamp) * 1000).toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                });
+            };
+
+            // Render action buttons
+            const renderActionButtons = () => (
+                <div className="space-y-4 animate-fade-in">
+                    <button
+                        onClick={() => setShowBuyTicketsForm(true)}
+                        className="w-full bg-yellow-500 text-white py-3 px-4 rounded-lg hover:bg-yellow-600 transition transform hover:scale-105"
+                    >
+                        🎟️ Buy Tickets
+                    </button>
+                    <button
+                        onClick={() => executeAction('claim_cashback')}
+                        className="w-full bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 transition transform hover:scale-105"
+                    >
+                        💸 Claim Cashback
+                    </button>
+                    <button
+                        onClick={() => executeAction('token_distribution')}
+                        className="w-full bg-purple-500 text-white py-3 px-4 rounded-lg hover:bg-purple-600 transition transform hover:scale-105"
+                    >
+                        🎁 Claim Token Distribution
+                    </button>
+                    <button
+                        onClick={() => executeAction('delink_wallet')}
+                        className="w-full bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 transition transform hover:scale-105"
+                    >
+                        🔓 Delink Wallet
+                    </button>
+                </div>
+            );
+
+            // Render debug console
+            const renderDebugConsole = () => (
+                <div className="mt-4">
+                    <button
+                        onClick={() => setShowDebugConsole(!showDebugConsole)}
+                        className="w-full bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition"
+                    >
+                        {showDebugConsole ? 'Hide Debug Console' : 'Show Debug Console'}
+                    </button>
+                    {showDebugConsole && (
+                        <div className="debug-console mt-2">
+                            {debugLogs.map((log, index) => (
+                                <div key={index} className={log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-gray-200'}>
+                                    [{log.timestamp}] {log.message}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full animate-fade-in">
+                        <h1 className="text-3xl font-bold text-center mb-4 text-purple-600">Luckie Lottery 🎰</h1>
+                        {telegramUser && (
+                            <p className="text-sm text-gray-600 mb-4 text-center">
+                                Welcome, {telegramUser.first_name || 'User'}! (ID: {userId}) 🎉
+                            </p>
+                        )}
+                        {!isWalletLinked ? (
+                            <div className="text-center">
+                                <h2 className="text-2xl font-semibold mb-6 text-yellow-600">Join the Lottery Fun! 🎈</h2>
+                                <p className="text-gray-700 mb-6">
+                                    Link your MetaMask or Telegram Wallet to start playing the Luckie Lottery! 🚀
+                                </p>
+                                <button
+                                    onClick={() => executeAction('set_wallet')}
+                                    className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 transition transform hover:scale-105 animate-pulse"
+                                >
+                                    🔗 Connect Wallet
+                                </button>
+                                {status && <p className="mt-4 text-sm text-green-600">{status}</p>}
+                                {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+                            </div>
+                        ) : (
+                            <div>
+                                <h2 className="text-2xl font-semibold mb-4 text-green-600">Ready to Win Big? 💰</h2>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    Connected Wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)} ✅
+                                </p>
+                                <div className="bg-yellow-100 p-4 rounded-lg mb-6">
+                                    <h3 className="text-lg font-bold text-yellow-700">Lottery Info 🎟️</h3>
+                                    <p><strong>Lottery ID:</strong> {lotteryInfo.currentLotteryId}</p>
+                                    <p><strong>Ticket Price:</strong> {lotteryInfo.ticketPrice} $LUCK</p>
+                                    <p><strong>Start Time:</strong> {formatTimestamp(lotteryInfo.startTime)}</p>
+                                    <p><strong>End Time:</strong> {formatTimestamp(lotteryInfo.endTime)}</p>
+                                    <p><strong>Result Time:</strong> {formatTimestamp(lotteryInfo.resultTime)}</p>
+                                    <p><strong>Prize Pool:</strong> {lotteryInfo.prizePool} $LUCK</p>
+                                    <p><strong>Participants:</strong> {lotteryInfo.participants}</p>
+                                    <p><strong>Status:</strong> {lotteryInfo.active ? 'Active 🟢' : 'Inactive 🔴'}</p>
+                                    {lotteryInfo.isPaused && (
+                                        <p className="text-red-600">⚠️ Lottery contract is paused. Delinking, cashback, and token distribution are still available!</p>
+                                    )}
+                                </div>
+                                {showBuyTicketsForm ? (
+                                    <form onSubmit={handleBuyTicketsSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Lottery ID</label>
+                                            <input
+                                                type="number"
+                                                value={buyTicketsForm.lotteryId}
+                                                onChange={(e) => setBuyTicketsForm({ ...buyTicketsForm, lotteryId: e.target.value })}
+                                                className="w-full p-2 border rounded-lg"
+                                                placeholder="Enter Lottery ID"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Number of Tickets</label>
+                                            <input
+                                                type="number"
+                                                value={buyTicketsForm.ticketCount}
+                                                onChange={(e) => setBuyTicketsForm({ ...buyTicketsForm, ticketCount: e.target.value })}
+                                                className="w-full p-2 border rounded-lg"
+                                                placeholder="Enter ticket count"
+                                                min="1"
+                                                required
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            className="w-full bg-yellow-500 text-white py-3 px-4 rounded-lg hover:bg-yellow-600 transition"
+                                        >
+                                            Confirm Purchase 🎟️
+                                        </button>
+                                        <button
+                                            onClick={() => setShowBuyTicketsForm(false)}
+                                            className="w-full bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </form>
+                                ) : (
+                                    renderActionButtons()
+                                )}
+                                {status && <p className="mt-4 text-sm text-green-600">{status}</p>}
+                                {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+                            </div>
+                        )}
+                        {renderDebugConsole()}
+                        <div className="mt-6 text-sm text-gray-500 text-center">
+                            <p>Need testnet BNB for gas fees? Get it here:</p>
+                            <a
+                                href="https://www.bnbchain.org/en/testnet-faucet"
+                                target="_blank"
+                                className="text-blue-500 hover:underline"
+                            >
+                                BNB Testnet Faucet
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Tailwind animation for fade-in
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
-    <script src="https://getbootstrap.com/docs/4.0/assets/js/vendor/popper.min.js"></script>
-    <script src="https://getbootstrap.com/docs/4.0/dist/js/bootstrap.min.js"></script>
-    <script src="https://getbootstrap.com/docs/4.0/assets/js/vendor/holder.min.js"></script>
 </body>
-
 </html>
