@@ -32,7 +32,7 @@
         }
     </style>
 </head>
-<body class="gradient-bg">
+<body className="gradient-bg">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -212,6 +212,7 @@
             const [showBuyTicketsForm, setShowBuyTicketsForm] = useState(false);
             const [buyTicketsForm, setBuyTicketsForm] = useState({ lotteryId: '', ticketCount: '' });
             const [sdk, setSdk] = useState(null);
+            const [useMetaMaskSDK, setUseMetaMaskSDK] = useState(false);
             const [debugLogs, setDebugLogs] = useState([]);
             const [showDebugConsole, setShowDebugConsole] = useState(false);
 
@@ -228,42 +229,59 @@
                     logToConsole('MetaMask SDK script failed to load', 'error');
                 } else {
                     logToConsole('MetaMask SDK script loaded', 'success');
+                    logToConsole(`MetaMaskSDK type: ${typeof MetaMaskSDK}, value: ${JSON.stringify(MetaMaskSDK).slice(0, 100)}`, 'info');
                 }
             }, []);
 
-            // Initialize MetaMask SDK with fallback
+            // Initialize wallet provider (MetaMask SDK or window.ethereum)
             useEffect(() => {
-                const initializeSdk = async () => {
+                const initializeWallet = async () => {
                     try {
-                        logToConsole('Initializing MetaMask SDK...');
-                        if (typeof MetaMaskSDK === 'undefined') {
-                            throw new Error('MetaMask SDK not available. Falling back to window.ethereum.');
-                        }
-                        const MMSDK = new MetaMaskSDK({
-                            dappMetadata: {
-                                name: 'Luckie Lottery',
-                                url: window.location.href,
-                                iconUrl: 'https://na8guy.github.io/-LUCK/favicon.ico'
-                            },
-                            logging: { sdk: true },
-                            checkInstallationImmediately: true,
-                            forceInjectProvider: true
-                        });
-                        await MMSDK.init();
-                        logToConsole('MetaMask SDK initialized successfully', 'success');
-                        setSdk(MMSDK);
-                    } catch (err) {
-                        logToConsole(`MetaMask SDK initialization failed: ${err.message}`, 'error');
-                        if (window.ethereum) {
-                            logToConsole('Falling back to window.ethereum', 'warn');
-                            setSdk({ getProvider: () => window.ethereum, connect: async () => window.ethereum.request({ method: 'eth_requestAccounts' }) });
+                        if (useMetaMaskSDK) {
+                            logToConsole('Attempting to initialize MetaMask SDK...');
+                            if (typeof MetaMaskSDK === 'undefined') {
+                                throw new Error('MetaMask SDK not available.');
+                            }
+                            const MMSDK = new MetaMaskSDK({
+                                dappMetadata: {
+                                    name: 'Luckie Lottery',
+                                    url: window.location.href,
+                                    iconUrl: 'https://na8guy.github.io/-LUCK/favicon.ico'
+                                },
+                                logging: { sdk: true },
+                                checkInstallationImmediately: true,
+                                forceInjectProvider: true
+                            });
+                            await MMSDK.init();
+                            logToConsole('MetaMask SDK initialized successfully', 'success');
+                            setSdk(MMSDK);
+                        } else if (window.ethereum) {
+                            logToConsole('Using window.ethereum', 'success');
+                            setSdk({
+                                getProvider: () => window.ethereum,
+                                connect: async () => window.ethereum.request({ method: 'eth_requestAccounts' }),
+                                terminate: () => {}
+                            });
                         } else {
+                            logToConsole('No wallet provider available. Please install MetaMask.', 'error');
                             setError('MetaMask is not installed. Please install it from https://metamask.io.');
+                        }
+                    } catch (err) {
+                        logToConsole(`Wallet initialization failed: ${err.message}`, 'error');
+                        if (window.ethereum && !useMetaMaskSDK) {
+                            logToConsole('Using window.ethereum as fallback', 'warn');
+                            setSdk({
+                                getProvider: () => window.ethereum,
+                                connect: async () => window.ethereum.request({ method: 'eth_requestAccounts' }),
+                                terminate: () => {}
+                            });
+                        } else {
+                            setError('Failed to initialize wallet: ' + err.message);
                         }
                     }
                 };
-                initializeSdk();
-            }, []);
+                initializeWallet();
+            }, [useMetaMaskSDK]);
 
             // Initialize Telegram Web App and fetch lottery info
             useEffect(() => {
@@ -302,11 +320,21 @@
                             throw new Error('All BSC Testnet RPCs failed. Please check your network.');
                         }
 
+                        // Validate contract address
+                        if (!ethers.isAddress(LOTTERY_CONTRACT_ADDRESS)) {
+                            logToConsole(`Invalid contract address: ${LOTTERY_CONTRACT_ADDRESS}`, 'error');
+                            throw new Error('Invalid contract address. Please verify on BSC Testnet Explorer.');
+                        }
+                        logToConsole(`Contract address validated: ${LOTTERY_CONTRACT_ADDRESS}`, 'info');
+
                         let lotteryContract;
                         try {
                             lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
-                            const contractMethods = Object.keys(lotteryContract.interface.functions);
-                            logToConsole(`Lottery contract methods: ${contractMethods.join(', ')}`);
+                            // Check ABI compatibility
+                            const functionNames = lotteryContract.interface.fragments
+                                .filter(frag => frag.type === 'function')
+                                .map(frag => frag.name);
+                            logToConsole(`Lottery contract functions: ${functionNames.join(', ')}`);
                         } catch (contractErr) {
                             logToConsole(`Failed to initialize lottery contract: ${contractErr.message}`, 'error');
                             throw new Error('Invalid contract address or ABI. Please verify on BSC Testnet Explorer.');
@@ -314,12 +342,17 @@
 
                         const userIdInt = params.get('userId') ? parseInt(params.get('userId')) : 0;
                         let linkedWallet = '0x0000000000000000000000000000000000000000';
-                        if (typeof lotteryContract.telegramIdToWallet === 'function') {
-                            linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
-                            logToConsole(`Linked wallet for userId ${userIdInt}: ${linkedWallet}`);
-                        } else {
-                            logToConsole('telegramIdToWallet not found in contract ABI', 'warn');
+                        try {
+                            if (lotteryContract.interface.getFunction('telegramIdToWallet')) {
+                                linkedWallet = await lotteryContract.telegramIdToWallet(userIdInt);
+                                logToConsole(`Linked wallet for userId ${userIdInt}: ${linkedWallet}`);
+                            } else {
+                                logToConsole('telegramIdToWallet not found in contract ABI', 'warn');
+                            }
+                        } catch (walletErr) {
+                            logToConsole(`Failed to fetch telegramIdToWallet: ${walletErr.message}`, 'warn');
                         }
+
                         const ticketPrice = await lotteryContract.ticketPrice();
                         const isPaused = await lotteryContract.paused();
                         const currentLotteryId = await lotteryContract.currentLotteryId();
@@ -364,29 +397,29 @@
                 });
             };
 
-            // Connect wallet with MetaMask SDK or window.ethereum
+            // Connect wallet
             const connectWallet = async () => {
                 if (!sdk) {
-                    logToConsole('MetaMask SDK not initialized', 'error');
-                    setError('MetaMask not available. Please install MetaMask from https://metamask.io.');
+                    logToConsole('Wallet provider not initialized', 'error');
+                    setError('Wallet provider not available. Please install MetaMask from https://metamask.io.');
                     return null;
                 }
                 try {
                     setError('');
-                    setStatus('Connecting to MetaMask...');
+                    setStatus('Connecting to wallet...');
                     logToConsole('Attempting to connect wallet');
 
                     const providerAvailable = sdk.getProvider();
                     if (!providerAvailable) {
-                        logToConsole('MetaMask provider not detected', 'error');
-                        throw new Error('MetaMask provider not detected. Please ensure MetaMask is installed.');
+                        logToConsole('Wallet provider not detected', 'error');
+                        throw new Error('Wallet provider not detected. Please ensure MetaMask is installed.');
                     }
-                    logToConsole('MetaMask provider detected');
+                    logToConsole('Wallet provider detected');
 
                     const accounts = await sdk.connect();
                     if (!accounts || accounts.length === 0) {
-                        logToConsole('No accounts returned by MetaMask', 'error');
-                        throw new Error('No accounts returned by MetaMask.');
+                        logToConsole('No accounts returned', 'error');
+                        throw new Error('No accounts returned by wallet.');
                     }
                     logToConsole(`Connected account: ${accounts[0]}`);
 
@@ -406,7 +439,7 @@
                             logToConsole('Network switched successfully', 'success');
                         } catch (switchError) {
                             if (switchError.code === 4902) {
-                                logToConsole('Adding BSC Testnet to MetaMask');
+                                logToConsole('Adding BSC Testnet to wallet');
                                 await sdk.getProvider().request({
                                     method: 'wallet_addEthereumChain',
                                     params: [{
@@ -436,8 +469,8 @@
                     if (err.code === 4001) {
                         errorMessage = 'Connection rejected by user';
                     } else if (err.message.includes('No accounts')) {
-                        errorMessage = 'No accounts available in MetaMask. Please add an account.';
-                    } else if (err.message.includes('MetaMask provider not detected')) {
+                        errorMessage = 'No accounts available in wallet. Please add an account.';
+                    } else if (err.message.includes('Wallet provider not detected')) {
                         errorMessage = 'MetaMask is not installed. Please install it from https://metamask.io.';
                     } else if (err.message.includes('Failed to switch')) {
                         errorMessage = err.message;
@@ -450,14 +483,14 @@
                 }
             };
 
-            // Disconnect MetaMask
+            // Disconnect wallet
             const disconnectWallet = () => {
                 setWalletAddress('');
                 setIsWalletLinked(false);
                 if (sdk) {
                     sdk.terminate();
                     setSdk(null);
-                    logToConsole('MetaMask SDK terminated', 'success');
+                    logToConsole('Wallet provider terminated', 'success');
                 }
                 setStatus('Wallet delinked! Please disconnect MetaMask manually if needed. 🎉');
                 logToConsole('Wallet disconnected from UI', 'success');
@@ -497,7 +530,7 @@
                     let tx;
                     switch (actionToExecute) {
                         case 'set_wallet': {
-                            if (typeof lotteryContract.telegramIdToWallet !== 'function') {
+                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
                                 logToConsole('telegramIdToWallet not supported by contract', 'error');
                                 throw new Error('telegramIdToWallet not supported by the contract.');
                             }
@@ -569,12 +602,12 @@
                                 logToConsole('No tokens available for distribution', 'error');
                                 throw new Error('No tokens available for distribution.');
                             }
-                            tx = await tokenDistributionContract.distributeTokens({ gasLimit: "200000" });
+                            tx = await tokenDistributionContract.distributeTokens({ gasLimit: 200000 });
                             logToConsole(`distributeTokens transaction sent: ${tx.hash}`);
                             break;
                         }
                         case 'delink_wallet': {
-                            if (typeof lotteryContract.telegramIdToWallet !== 'function') {
+                            if (!lotteryContract.interface.getFunction('telegramIdToWallet')) {
                                 logToConsole('telegramIdToWallet not supported by contract', 'error');
                                 throw new Error('telegramIdToWallet not supported by the contract.');
                             }
@@ -686,9 +719,18 @@
                 </div>
             );
 
-            // Render debug console
+            // Render debug console and SDK toggle
             const renderDebugConsole = () => (
                 <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm text-gray-700">Use MetaMask SDK</label>
+                        <input
+                            type="checkbox"
+                            checked={useMetaMaskSDK}
+                            onChange={(e) => setUseMetaMaskSDK(e.target.checked)}
+                            className="h-5 w-5"
+                        />
+                    </div>
                     <button
                         onClick={() => setShowDebugConsole(!showDebugConsole)}
                         className="w-full bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition"
@@ -709,7 +751,7 @@
 
             return (
                 <div className="min-h-screen flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full animate-fade-in">
                         <h1 className="text-3xl font-bold text-center mb-4 text-purple-600">Luckie Lottery 🎰</h1>
                         {telegramUser && (
                             <p className="text-sm text-gray-600 mb-4 text-center">
