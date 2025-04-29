@@ -29,8 +29,8 @@
         // Contract addresses and ABIs
         const LOTTERY_CONTRACT_ADDRESS = '0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359';
         const LUCK_TOKEN_ADDRESS = '0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE';
-        const CASHBACK_CONTRACT_ADDRESS = '0xYOUR_CASHBACK_CONTRACT_ADDRESS'; // Replace with actual address
-        const TOKEN_DISTRIBUTION_CONTRACT_ADDRESS = '0xYOUR_TOKEN_DISTRIBUTION_CONTRACT_ADDRESS'; // Replace with actual address
+        const CASHBACK_CONTRACT_ADDRESS = '0x8F597A098AA0943e8710c283358D9aA0e465C53D'; // Replace with actual address
+        const TOKEN_DISTRIBUTION_CONTRACT_ADDRESS = '0xb11aeE0628cdC3058502faF91fa8FC02686Cf2cc'; // Replace with actual address
         const CHAIN_ID = 97;
 
         const LOTTERY_CONTRACT_ABI = [
@@ -50,7 +50,7 @@
             },
             {
                 "inputs": [
-                    {"internalType": "uint256", "name": "lotteryId", "type": "uint256"},
+                    {"internalType": "uint32", "name": "lotteryId", "type": "uint32"},
                     {"internalType": "uint256", "name": "numberOfTickets", "type": "uint256"}
                 ],
                 "name": "buyTickets",
@@ -76,6 +76,27 @@
                 "inputs": [],
                 "name": "ticketPrice",
                 "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "currentLotteryId",
+                "outputs": [{"internalType": "uint32", "name": "", "type": "uint32"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "uint32", "name": "lotteryId", "type": "uint32"}],
+                "name": "getLotteryInfo",
+                "outputs": [
+                    {"internalType": "uint256", "name": "startTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "endTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "resultTime", "type": "uint256"},
+                    {"internalType": "bool", "name": "lotteryEnded", "type": "bool"},
+                    {"internalType": "uint256", "name": "participants", "type": "uint256"},
+                    {"internalType": "uint256", "name": "prizePool", "type": "uint256"}
+                ],
                 "stateMutability": "view",
                 "type": "function"
             }
@@ -159,11 +180,22 @@
             const [status, setStatus] = useState('');
             const [telegramUser, setTelegramUser] = useState(null);
             const [isWalletLinked, setIsWalletLinked] = useState(false);
-            const [lotteryInfo, setLotteryInfo] = useState({ ticketPrice: '0', isPaused: false });
+            const [lotteryInfo, setLotteryInfo] = useState({
+                currentLotteryId: '0',
+                ticketPrice: '0',
+                isPaused: false,
+                startTime: '0',
+                endTime: '0',
+                resultTime: '0',
+                lotteryEnded: false,
+                participants: '0',
+                prizePool: '0',
+                active: false
+            });
             const [showBuyTicketsForm, setShowBuyTicketsForm] = useState(false);
             const [buyTicketsForm, setBuyTicketsForm] = useState({ lotteryId: '', ticketCount: '' });
 
-            // Initialize Telegram Web App and check wallet linking
+            // Initialize Telegram Web App and fetch lottery info
             useEffect(() => {
                 if (window.Telegram && window.Telegram.WebApp) {
                     window.Telegram.WebApp.ready();
@@ -177,27 +209,43 @@
                 setLotteryId(params.get('lotteryId') || '');
                 setTicketCount(params.get('ticketCount') || '');
 
-                // Check if wallet is linked
-                const checkWallet = async () => {
+                // Fetch lottery info and check wallet linking
+                const fetchLotteryInfo = async () => {
                     try {
                         const provider = new ethers.JsonRpcProvider('https://bsc-testnet-rpc.publicnode.com');
                         const lotteryContract = new ethers.Contract(LOTTERY_CONTRACT_ADDRESS, LOTTERY_CONTRACT_ABI, provider);
                         const linkedWallet = await lotteryContract.telegramIdToWallet(params.get('userId') || '0');
                         const ticketPrice = await lotteryContract.ticketPrice();
                         const isPaused = await lotteryContract.paused();
+                        const currentLotteryId = await lotteryContract.currentLotteryId();
+                        const lotteryDetails = await lotteryContract.getLotteryInfo(currentLotteryId);
+                        const blockTimestamp = (await provider.getBlock('latest')).timestamp;
+
                         setLotteryInfo({
+                            currentLotteryId: currentLotteryId.toString(),
                             ticketPrice: ethers.formatEther(ticketPrice),
-                            isPaused
+                            isPaused,
+                            startTime: lotteryDetails.startTime.toString(),
+                            endTime: lotteryDetails.endTime.toString(),
+                            resultTime: lotteryDetails.resultTime.toString(),
+                            lotteryEnded: lotteryDetails.lotteryEnded,
+                            participants: lotteryDetails.participants.toString(),
+                            prizePool: ethers.formatEther(lotteryDetails.prizePool),
+                            active: !lotteryDetails.lotteryEnded &&
+                                    blockTimestamp >= lotteryDetails.startTime &&
+                                    blockTimestamp < lotteryDetails.endTime
                         });
+
                         if (linkedWallet !== '0x0000000000000000000000000000000000000000') {
                             setIsWalletLinked(true);
                             setWalletAddress(linkedWallet);
                         }
                     } catch (err) {
-                        setError(`Failed to check wallet: ${err.message}`);
+                        console.error('Fetch lottery info error:', err);
+                        setError(`Failed to fetch lottery info: ${err.message}`);
                     }
                 };
-                checkWallet();
+                fetchLotteryInfo();
             }, []);
 
             // Trigger confetti animation
@@ -216,12 +264,10 @@
                     setError('');
                     setStatus('Connecting to MetaMask...');
 
-                    // Detect if running in Telegram mobile
                     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                     const isTelegramMobile = window.Telegram && window.Telegram.WebApp;
 
                     if (isMobile && isTelegramMobile && !window.ethereum) {
-                        // Open MetaMask mobile app via deep link
                         window.location.href = 'metamask://';
                         setStatus('Please open MetaMask and connect your wallet.');
                         return null;
@@ -265,10 +311,22 @@
                     setStatus('Wallet connected! 🎉');
                     return { provider, signer, address };
                 } catch (err) {
+                    console.error('Connect wallet error:', err);
                     setError(`Failed to connect wallet: ${err.message}`);
                     setStatus('');
                     return null;
                 }
+            };
+
+            // Disconnect MetaMask
+            const disconnectWallet = () => {
+                setWalletAddress('');
+                setIsWalletLinked(false);
+                if (window.ethereum) {
+                    window.ethereum.removeAllListeners();
+                }
+                setStatus('Wallet delinked! Please disconnect MetaMask manually if needed. 🎉');
+                triggerConfetti();
             };
 
             // Execute blockchain actions
@@ -355,7 +413,9 @@
                             if (existingWallet.toLowerCase() !== address.toLowerCase()) {
                                 throw new Error(`Connected wallet does not match linked wallet (${existingWallet}).`);
                             }
+                            console.log('Delinking wallet for Telegram ID:', userId, 'Wallet:', address);
                             tx = await lotteryContract.delinkWallet(parseInt(userId), { gasLimit: 200000 });
+                            console.log('Delink transaction sent:', tx.hash);
                             break;
                         }
                         default:
@@ -363,17 +423,21 @@
                     }
 
                     const receipt = await tx.wait();
+                    console.log('Transaction confirmed:', receipt.hash);
                     setStatus(`Transaction successful! Hash: ${receipt.hash} 🎉`);
                     window.Telegram.WebApp.showAlert('Transaction completed successfully!');
                     if (actionToExecute === 'set_wallet') {
                         setIsWalletLinked(true);
                         triggerConfetti();
+                    } else if (actionToExecute === 'delink_wallet') {
+                        disconnectWallet();
                     }
                     if (actionToExecute === 'buy_tickets') {
                         setShowBuyTicketsForm(false);
                         setBuyTicketsForm({ lotteryId: '', ticketCount: '' });
                     }
                 } catch (err) {
+                    console.error('Execute action error:', err);
                     setError(`Error: ${err.message}`);
                     setStatus('');
                     window.Telegram.WebApp.showAlert(`Error: ${err.message}`);
@@ -384,6 +448,15 @@
             const handleBuyTicketsSubmit = (e) => {
                 e.preventDefault();
                 executeAction('buy_tickets');
+            };
+
+            // Format timestamp to readable date
+            const formatTimestamp = (timestamp) => {
+                if (!timestamp || timestamp === '0') return 'N/A';
+                return new Date(parseInt(timestamp) * 1000).toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                });
             };
 
             // Render action buttons
@@ -448,9 +521,16 @@
                                 </p>
                                 <div className="bg-yellow-100 p-4 rounded-lg mb-6">
                                     <h3 className="text-lg font-bold text-yellow-700">Lottery Info 🎟️</h3>
-                                    <p>Ticket Price: {lotteryInfo.ticketPrice} $LUCK</p>
+                                    <p><strong>Lottery ID:</strong> {lotteryInfo.currentLotteryId}</p>
+                                    <p><strong>Ticket Price:</strong> {lotteryInfo.ticketPrice} $LUCK</p>
+                                    <p><strong>Start Time:</strong> {formatTimestamp(lotteryInfo.startTime)}</p>
+                                    <p><strong>End Time:</strong> {formatTimestamp(lotteryInfo.endTime)}</p>
+                                    <p><strong>Result Time:</strong> {formatTimestamp(lotteryInfo.resultTime)}</p>
+                                    <p><strong>Prize Pool:</strong> {lotteryInfo.prizePool} $LUCK</p>
+                                    <p><strong>Participants:</strong> {lotteryInfo.participants}</p>
+                                    <p><strong>Status:</strong> {lotteryInfo.active ? 'Active 🟢' : 'Inactive 🔴'}</p>
                                     {lotteryInfo.isPaused && (
-                                        <p className="text-red-600">⚠️ Lottery is paused. Cashback and token distribution are still available!</p>
+                                        <p className="text-red-600">⚠️ Lottery contract is paused. Cashback and token distribution are still available!</p>
                                     )}
                                 </div>
                                 {showBuyTicketsForm ? (
