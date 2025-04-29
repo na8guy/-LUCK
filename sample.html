@@ -12,6 +12,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@metamask/sdk@0.28.2/dist/browser/iife/metamask-sdk.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -187,6 +188,23 @@
             }
         ];
 
+        // Override window.open for MetaMask URL redirection
+        const originalOpen = window.open;
+        window.open = (url, ...args) => {
+            if (url && url.startsWith('metamask://')) {
+                const redirectUrl = url.replace('metamask://', 'https://metamask.app.link/');
+                if (window.Telegram && window.Telegram.WebApp) {
+                    console.log(`Redirecting MetaMask URL: ${url} -> ${redirectUrl}`);
+                    window.Telegram.WebApp.openLink(redirectUrl);
+                    return null;
+                } else {
+                    console.log(`Telegram.WebApp not available, falling back to original open: ${redirectUrl}`);
+                    return originalOpen.apply(window, [redirectUrl, ...args]);
+                }
+            }
+            return originalOpen.apply(window, [url, ...args]);
+        };
+
         function App() {
             const [action, setAction] = useState('home');
             const [userId, setUserId] = useState('');
@@ -212,6 +230,7 @@
             const [showBuyTicketsForm, setShowBuyTicketsForm] = useState(false);
             const [buyTicketsForm, setBuyTicketsForm] = useState({ lotteryId: '', ticketCount: '' });
             const [sdk, setSdk] = useState(null);
+            const [walletConnectProvider, setWalletConnectProvider] = useState(null);
             const [debugLogs, setDebugLogs] = useState([]);
             const [showDebugConsole, setShowDebugConsole] = useState(false);
 
@@ -227,7 +246,7 @@
                 console.log(`[${timestamp}] ${type.toUpperCase()}: ${serializedMessage}`);
             };
 
-            // Initialize wallet provider (MetaMask SDK, window.ethereum, or Telegram Wallet)
+            // Initialize wallet providers
             useEffect(() => {
                 const initializeWallet = async () => {
                     try {
@@ -258,6 +277,33 @@
                             logToConsole(`MetaMask SDK initialization failed: ${sdkErr.message}`, 'error');
                         }
 
+                        // Try WalletConnect
+                        let wcProvider = null;
+                        if (!provider) {
+                            try {
+                                logToConsole('Attempting to initialize WalletConnect...');
+                                wcProvider = new WalletConnectProvider({
+                                    rpc: {
+                                        [CHAIN_ID]: BSC_TESTNET_RPCS[0]
+                                    },
+                                    chainId: CHAIN_ID,
+                                    qrcode: false // Disable QR code, rely on deep links
+                                });
+                                wcProvider.on('display_uri', (uri) => {
+                                    logToConsole(`WalletConnect URI: ${uri}`, 'info');
+                                    if (uri.startsWith('wc:')) {
+                                        const metamaskUrl = `metamask://wc?uri=${encodeURIComponent(uri)}`;
+                                        logToConsole(`Opening MetaMask URL: ${metamaskUrl}`, 'info');
+                                        window.open(metamaskUrl);
+                                    }
+                                });
+                                logToConsole('WalletConnect initialized', 'success');
+                                setWalletConnectProvider(wcProvider);
+                            } catch (wcErr) {
+                                logToConsole(`WalletConnect initialization failed: ${wcErr.message}`, 'error');
+                            }
+                        }
+
                         // Fallback to window.ethereum
                         if (!provider && window.ethereum) {
                             logToConsole('window.ethereum detected', 'success');
@@ -270,15 +316,20 @@
                             provider = window.Telegram.WebApp.Wallet;
                         }
 
-                        if (!provider) {
+                        if (!provider && !wcProvider) {
                             logToConsole('No wallet provider detected. Please install MetaMask, use Telegram Wallet, or access via a supported wallet.', 'error');
                             setError('No wallet provider detected. Please install MetaMask from https://metamask.io, use Telegram Wallet, or access via a supported wallet.');
                             return;
                         }
 
                         setSdk({
-                            getProvider: () => provider,
+                            getProvider: () => provider || (wcProvider && wcProvider.wc),
                             connect: async () => {
+                                if (wcProvider) {
+                                    logToConsole('Connecting via WalletConnect...');
+                                    const accounts = await wcProvider.enable();
+                                    return accounts;
+                                }
                                 if (sdkInstance) {
                                     return await sdkInstance.connect();
                                 }
@@ -287,6 +338,9 @@
                             terminate: () => {
                                 if (sdkInstance) {
                                     sdkInstance.terminate();
+                                }
+                                if (wcProvider) {
+                                    wcProvider.disconnect();
                                 }
                             }
                         });
@@ -336,7 +390,6 @@
                             throw new Error('All BSC Testnet RPCs failed. Please check your network.');
                         }
 
-                        // Validate contract address
                         if (!ethers.isAddress(LOTTERY_CONTRACT_ADDRESS)) {
                             logToConsole(`Invalid contract address: ${LOTTERY_CONTRACT_ADDRESS}`, 'error');
                             throw new Error('Invalid contract address. Please verify on BSC Testnet Explorer.');
@@ -368,7 +421,6 @@
                             logToConsole(`Failed to fetch telegramIdToWallet: ${walletErr.message}`, 'warn');
                         }
 
-                        // Fetch contract data
                         const ticketPrice = await lotteryContract.ticketPrice();
                         const isPaused = await lotteryContract.paused();
                         const currentLotteryId = await lotteryContract.currentLotteryId();
@@ -381,7 +433,6 @@
                             throw new Error('Failed to fetch lottery info. ABI may be incorrect.');
                         }
 
-                        // Handle array response
                         let startTime, endTime, resultTime, lotteryEnded, participants, prizePool;
                         if (Array.isArray(lotteryDetails) && lotteryDetails.length >= 6) {
                             [startTime, endTime, resultTime, lotteryEnded, participants, prizePool] = lotteryDetails;
@@ -444,7 +495,7 @@
                     logToConsole('Attempting to connect wallet');
 
                     const providerAvailable = sdk.getProvider();
-                    if (!providerAvailable) {
+                    if (!providerAvailable && !walletConnectProvider) {
                         logToConsole('Wallet provider not detected', 'error');
                         throw new Error('Wallet provider not detected. Please ensure MetaMask or Telegram Wallet is installed.');
                     }
@@ -457,7 +508,7 @@
                     }
                     logToConsole(`Connected account: ${accounts[0]}`);
 
-                    const provider = new ethers.BrowserProvider(sdk.getProvider());
+                    const provider = new ethers.BrowserProvider(sdk.getProvider() || walletConnectProvider);
                     const signer = await provider.getSigner();
                     const address = accounts[0];
                     const currentChainId = Number((await provider.getNetwork()).chainId);
@@ -525,6 +576,11 @@
                     sdk.terminate();
                     setSdk(null);
                     logToConsole('Wallet provider terminated', 'success');
+                }
+                if (walletConnectProvider) {
+                    walletConnectProvider.disconnect();
+                    setWalletConnectProvider(null);
+                    logToConsole('WalletConnect disconnected', 'success');
                 }
                 setStatus('Wallet delinked! Please disconnect your wallet manually if needed. 🎉');
                 logToConsole('Wallet disconnected from UI', 'success');
