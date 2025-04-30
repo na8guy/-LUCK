@@ -4,214 +4,296 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Luckie Lottery</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/4.3.0/web3.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #status, #error { margin: 10px 0; }
-        #actionForm { margin-top: 20px; }
-        button { padding: 10px; margin: 5px; }
-        input { padding: 8px; margin: 5px; }
-        .hidden { display: none; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        input, select {
+            padding: 8px;
+            margin: 10px 0;
+            width: 100%;
+            max-width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .status {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
     </style>
 </head>
 <body>
-    <h1>Luckie Lottery</h1>
-    <div id="walletStatus">Wallet: Not connected</div>
-    <button id="setWalletButton" onclick="setWallet()">Connect Wallet</button>
-    <button id="delinkWalletButton" onclick="delinkWallet()" class="hidden">Delink Wallet</button>
-    <div id="lotteryStatus">Loading lottery status...</div>
-    <div id="userInfo"></div>
-    <div id="actionForm" class="hidden">
-        <h3 id="actionTitle"></h3>
-        <div id="actionDetails"></div>
-        <input id="ticketCount" type="number" placeholder="Number of Tickets" min="1" class="hidden">
-        <button id="actionButton" class="hidden">Execute Action</button>
+    <div class="container">
+        <h1>Luckie Lottery</h1>
+        <div id="walletInfo"></div>
+        <button id="connectWallet" onclick="connectWallet()">Connect Wallet</button>
+        <button id="delinkWallet" onclick="delinkWallet()" style="display:none;">Delink Wallet</button>
+        <div id="lotteryStatus" class="status">Loading lottery status...</div>
+        <div id="actionForm"></div>
+        <div id="message"></div>
     </div>
-    <div id="error"></div>
 
+    <!-- Include Web3.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     <script>
-        let web3, lotteryContract, tokenContract, userAccount;
-        const contractAddress = "0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359";
-        // Replace with actual $LUCK token contract address
-        const tokenContractAddress = "0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE"; // Update from CASHBACK_CONTRACT_ADDRESS or TOKEN_DISTRIBUTION_CONTRACT_ADDRESS
-        // ABI from LotteryContract.json (simplified)
-        const lotteryABI = [
-            {"constant":true,"inputs":[{"name":"lotteryId","type":"uint256"}],"name":"getLotteryInfo","outputs":[{"name":"startTime","type":"uint256"},{"name":"endTime","type":"uint256"},{"name":"resultTime","type":"uint256"},{"name":"ended","type":"bool"},{"name":"participants","type":"uint256"},{"name":"prizePool","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
-            {"constant":true,"inputs":[],"name":"currentLotteryId","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
-            {"constant":false,"inputs":[{"name":"lotteryId","type":"uint256"},{"name":"numberOfTickets","type":"uint256"}],"name":"buyTickets","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},
-            {"constant":true,"inputs":[],"name":"ticketPrice","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
-            {"constant":true,"inputs":[],"name":"paused","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},
-            {"constant":true,"inputs":[{"name":"lotteryId","type":"uint256"},{"name":"user","type":"address"}],"name":"getUserTickets","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"}
+        // Contract configuration
+        const LOTTERY_CONTRACT_ADDRESS = "0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359";
+        const LUCK_TOKEN_ADDRESS = "0xYourLuckTokenAddress"; // Replace with actual $LUCK token address
+        const LOTTERY_ABI = [ // Minimal ABI for buyTickets and getLotteryInfo
+            {
+                "inputs": [{"internalType": "uint256", "name": "lotteryId", "type": "uint256"}],
+                "name": "getLotteryInfo",
+                "outputs": [
+                    {"internalType": "uint256", "name": "startTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "endTime", "type": "uint256"},
+                    {"internalType": "uint256", "name": "resultTime", "type": "uint256"},
+                    {"internalType": "bool", "name": "ended", "type": "bool"},
+                    {"internalType": "uint256", "name": "participantCount", "type": "uint256"},
+                    {"internalType": "uint256", "name": "prizePool", "type": "uint256"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "lotteryId", "type": "uint256"},
+                    {"internalType": "uint256", "name": "ticketCount", "type": "uint256"}
+                ],
+                "name": "buyTickets",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "ticketPrice",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
         ];
-        // ERC20 ABI for $LUCK token
-        const tokenABI = [
-            {"constant":true,"inputs":[{"name":"account","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
-            {"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"}
+        const LUCK_TOKEN_ABI = [
+            {
+                "constant": true,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "constant": false,
+                "inputs": [
+                    {"name": "_spender", "type": "address"},
+                    {"name": "_value", "type": "uint256"}
+                ],
+                "name": "approve",
+                "outputs": [{"name": "success", "type": "bool"}],
+                "type": "function"
+            }
         ];
 
+        let web3;
+        let lotteryContract;
+        let luckTokenContract;
+        let accounts = [];
+
+        // Initialize Web3
         async function initWeb3() {
-            if (window.ethereum) {
+            if (typeof window.ethereum !== 'undefined') {
                 web3 = new Web3(window.ethereum);
-                lotteryContract = new web3.eth.Contract(lotteryABI, contractAddress);
-                tokenContract = new web3.eth.Contract(tokenABI, tokenContractAddress);
-                // Check if wallet is already connected
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                if (accounts.length > 0) {
-                    userAccount = accounts[0];
-                    updateWalletStatus();
-                }
-                checkLotteryStatus();
-                handleBotAction();
-            } else {
-                document.getElementById('error').innerText = "Please install MetaMask!";
-            }
-        }
-
-        async function setWallet() {
-            try {
-                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                userAccount = accounts[0];
-                localStorage.setItem('walletAddress', userAccount);
-                updateWalletStatus();
-                checkLotteryStatus();
-            } catch (error) {
-                document.getElementById('error').innerText = `Error connecting wallet: ${error.message}`;
-            }
-        }
-
-        async function delinkWallet() {
-            try {
-                userAccount = null;
-                localStorage.removeItem('walletAddress');
-                updateWalletStatus();
-                document.getElementById('actionForm').classList.add('hidden');
-                document.getElementById('lotteryStatus').innerText = "Please connect a wallet to view lottery details.";
-            } catch (error) {
-                document.getElementById('error').innerText = `Error delinking wallet: ${error.message}`;
-            }
-        }
-
-        function updateWalletStatus() {
-            if (userAccount) {
-                document.getElementById('walletStatus').innerText = `Wallet: ${userAccount}`;
-                document.getElementById('setWalletButton').classList.add('hidden');
-                document.getElementById('delinkWalletButton').classList.remove('hidden');
-            } else {
-                document.getElementById('walletStatus').innerText = "Wallet: Not connected";
-                document.getElementById('setWalletButton').classList.remove('hidden');
-                document.getElementById('delinkWalletButton').classList.add('hidden');
-            }
-        }
-
-        async function checkLotteryStatus() {
-            if (!userAccount) {
-                document.getElementById('lotteryStatus').innerText = "Please connect a wallet to view lottery details.";
-                return;
-            }
-            try {
-                const currentId = await lotteryContract.methods.currentLotteryId().call();
-                let lotteryId = currentId;
-                let lotteryInfo = await lotteryContract.methods.getLotteryInfo(currentId).call();
-                const currentTime = Math.floor(Date.now() / 1000);
-
-                const paused = await lotteryContract.methods.paused().call();
-                if (paused) {
-                    document.getElementById('lotteryStatus').innerText = `Lottery is paused. Ticket purchases are disabled.`;
-                    document.getElementById('actionForm').classList.add('hidden');
-                    return;
-                }
-
-                // Check if in 1-hour break
-                if (lotteryInfo.endTime <= currentTime && currentTime < lotteryInfo.resultTime) {
-                    document.getElementById('lotteryStatus').innerText = `Lottery #${currentId} is in result preparation. Ticket purchases paused until ${new Date(lotteryInfo.resultTime * 1000).toUTCString()}.`;
-                    document.getElementById('actionForm').classList.add('hidden');
-                    return;
-                }
-
-                // If current lottery is ended, try next lottery
-                if (lotteryInfo.ended) {
-                    lotteryId = parseInt(currentId) + 1;
-                    try {
-                        lotteryInfo = await lotteryContract.methods.getLotteryInfo(lotteryId).call();
-                        if (lotteryInfo.ended) {
-                            document.getElementById('lotteryStatus').innerText = `No active or upcoming lottery available.`;
-                            document.getElementById('actionForm').classList.add('hidden');
-                            return;
-                        }
-                    } catch (error) {
-                        document.getElementById('lotteryStatus').innerText = `No upcoming lottery available.`;
-                        document.getElementById('actionForm').classList.add('hidden');
-                        return;
+                try {
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    accounts = await web3.eth.getAccounts();
+                    if (accounts.length > 0) {
+                        document.getElementById('walletInfo').innerText = `Wallet: ${accounts[0]}`;
+                        document.getElementById('connectWallet').style.display = 'none';
+                        document.getElementById('delinkWallet').style.display = 'block';
+                        initContracts();
+                        handleAction();
                     }
+                } catch (error) {
+                    showMessage(`Error connecting to MetaMask: ${error.message}`, 'error');
                 }
-
-                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
-                const userTickets = await lotteryContract.methods.getUserTickets(lotteryId, userAccount).call();
-                const tokenDecimals = await tokenContract.methods.decimals().call();
-                const userBalance = await tokenContract.methods.balanceOf(userAccount).call();
-                document.getElementById('lotteryStatus').innerText = `Lottery #${lotteryId} is active! Ticket Price: ${web3.utils.fromWei(ticketPrice, 'ether')} $LUCK`;
-                document.getElementById('userInfo').innerText = `Your Balance: ${web3.utils.fromWei(userBalance, 'ether')} $LUCK\nYour Tickets: ${userTickets} for Lottery #${lotteryId}`;
-            } catch (error) {
-                document.getElementById('error').innerText = `Error checking lottery status: ${error.message}`;
-            }
-        }
-
-        async function handleBotAction() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const action = urlParams.get('action');
-            if (!action) return;
-
-            document.getElementById('actionForm').classList.remove('hidden');
-            document.getElementById('actionButton').classList.remove('hidden');
-
-            if (action === 'buy_tickets') {
-                const lotteryId = urlParams.get('lotteryId') || await lotteryContract.methods.currentLotteryId().call();
-                const ticketCount = urlParams.get('tickets') || 1;
-                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
-                const tokenDecimals = await tokenContract.methods.decimals().call();
-                const userBalance = userAccount ? await tokenContract.methods.balanceOf(userAccount).call() : '0';
-                const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
-
-                document.getElementById('actionTitle').innerText = `Buy Tickets for Lottery #${lotteryId}`;
-                document.getElementById('actionDetails').innerText = `Ticket Price: ${web3.utils.fromWei(ticketPrice, 'ether')} $LUCK\nNumber of Tickets: ${ticketCount}\nTotal Cost: ${web3.utils.fromWei(totalCost, 'ether')} $LUCK\nYour Balance: ${web3.utils.fromWei(userBalance, 'ether')} $LUCK`;
-                document.getElementById('ticketCount').value = ticketCount;
-                document.getElementById('ticketCount').classList.remove('hidden');
-                document.getElementById('actionButton').innerText = "Buy Tickets";
-                document.getElementById('actionButton').onclick = () => buyTickets(lotteryId);
-            } else if (action === 'delink_wallet') {
-                document.getElementById('actionTitle').innerText = "Delink Wallet";
-                document.getElementById('actionDetails').innerText = `Wallet: ${userAccount || 'Not connected'}\nClick below to delink your wallet.`;
-                document.getElementById('actionButton').innerText = "Delink Wallet";
-                document.getElementById('actionButton').onclick = delinkWallet;
             } else {
-                document.getElementById('actionForm').classList.add('hidden');
-                document.getElementById('error').innerText = `Unsupported action: ${action}`;
+                showMessage('MetaMask not detected. Please install MetaMask.', 'error');
             }
         }
 
-        async function buyTickets(lotteryId) {
+        // Initialize contracts
+        function initContracts() {
             try {
-                if (!userAccount) throw new Error("Please connect a wallet.");
-                const ticketCount = document.getElementById('ticketCount').value;
-                if (!ticketCount || ticketCount < 1) throw new Error("Please enter a valid number of tickets.");
-                
-                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
-                const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
-                const userBalance = await tokenContract.methods.balanceOf(userAccount).call();
-                if (web3.utils.toBN(userBalance).lt(totalCost)) {
-                    throw new Error("Insufficient $LUCK balance for purchase.");
-                }
-
-                await lotteryContract.methods.buyTickets(lotteryId, ticketCount).send({ from: userAccount });
-                document.getElementById('lotteryStatus').innerText = `Successfully bought ${ticketCount} ticket(s) for Lottery #${lotteryId}!`;
-                checkLotteryStatus();
-                document.getElementById('actionForm').classList.add('hidden');
+                lotteryContract = new web3.eth.Contract(LOTTERY_ABI, LOTTERY_CONTRACT_ADDRESS);
+                luckTokenContract = new web3.eth.Contract(LUCK_TOKEN_ABI, LUCK_TOKEN_ADDRESS);
+                updateLotteryStatus();
             } catch (error) {
-                document.getElementById('error').innerText = `Error buying tickets: ${error.message}`;
+                showMessage(`Error initializing contracts: ${error.message}`, 'error');
             }
         }
 
-        window.onload = initWeb3;
+        // Connect wallet
+        async function connectWallet() {
+            await initWeb3();
+        }
+
+        // Delink wallet
+        function delinkWallet() {
+            accounts = [];
+            document.getElementById('walletInfo').innerText = '';
+            document.getElementById('connectWallet').style.display = 'block';
+            document.getElementById('delinkWallet').style.display = 'none';
+            document.getElementById('actionForm').innerHTML = '';
+            showMessage('Wallet delinked.', 'success');
+            localStorage.removeItem('userAddress');
+        }
+
+        // Update lottery status
+        async function updateLotteryStatus() {
+            try {
+                const lotteryId = new URLSearchParams(window.location.search).get('lotteryId') || '1';
+                const lotteryInfo = await lotteryContract.methods.getLotteryInfo(lotteryId).call();
+                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const ticketPriceLuck = web3.utils.fromWei(ticketPrice, 'ether');
+                const prizePoolLuck = web3.utils.fromWei(lotteryInfo.prizePool, 'ether');
+                const status = lotteryInfo.ended ? 'Ended' : (Date.now() / 1000 < lotteryInfo.endTime ? 'Active' : 'Awaiting Results');
+                document.getElementById('lotteryStatus').innerText = 
+                    `Lottery #${lotteryId}\n` +
+                    `Status: ${status}\n` +
+                    `Participants: ${lotteryInfo.participantCount}\n` +
+                    `Prize Pool: ${prizePoolLuck} $LUCK\n` +
+                    `Ticket Price: ${ticketPriceLuck} $LUCK`;
+            } catch (error) {
+                showMessage(`Error checking lottery status: ${error.message}`, 'error');
+            }
+        }
+
+        // Handle actions based on URL parameters
+        async function handleAction() {
+            const params = new URLSearchParams(window.location.search);
+            const action = params.get('action');
+            const userId = params.get('userId');
+            const lotteryId = params.get('lotteryId');
+            const tickets = params.get('tickets');
+            const userAddress = params.get('userAddress');
+
+            if (action === 'set_wallet' && userId) {
+                if (accounts.length === 0) {
+                    showMessage('Please connect your wallet.', 'error');
+                    return;
+                }
+                // Assume contract has linkWallet function
+                try {
+                    await lotteryContract.methods.linkWallet(userId, accounts[0]).send({ from: accounts[0] });
+                    showMessage('Wallet linked successfully!', 'success');
+                    // Notify bot or update database (future implementation)
+                } catch (error) {
+                    showMessage(`Error linking wallet: ${error.message}`, 'error');
+                }
+            } else if (action === 'buy_tickets' && lotteryId && tickets && userId) {
+                document.getElementById('actionForm').innerHTML = `
+                    <h2>Buy Tickets</h2>
+                    <p>Lottery ID: ${lotteryId}</p>
+                    <p>Number of Tickets: ${tickets}</p>
+                    <button id="buyTicketsBtn" onclick="buyTickets(${lotteryId}, ${tickets})">Confirm Purchase</button>
+                `;
+                // Check balance
+                try {
+                    const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                    const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(tickets));
+                    const balance = await luckTokenContract.methods.balanceOf(accounts[0]).call();
+                    if (web3.utils.toBN(balance).lt(totalCost)) {
+                        showMessage('Insufficient $LUCK balance.', 'error');
+                        document.getElementById('buyTicketsBtn').disabled = true;
+                    } else {
+                        // Approve $LUCK tokens
+                        await luckTokenContract.methods.approve(LOTTERY_CONTRACT_ADDRESS, totalCost).send({ from: accounts[0] });
+                    }
+                } catch (error) {
+                    showMessage(`Error checking balance: ${error.message}`, 'error');
+                }
+            } else if (action === 'delink_wallet' && userId && userAddress) {
+                document.getElementById('actionForm').innerHTML = `
+                    <h2>Delink Wallet</h2>
+                    <p>Wallet: ${userAddress}</p>
+                    <button onclick="delinkWallet()">Confirm Delink</button>
+                `;
+            }
+        }
+
+        // Buy tickets
+        async function buyTickets(lotteryId, ticketCount) {
+            try {
+                document.getElementById('buyTicketsBtn').disabled = true;
+                const tx = await lotteryContract.methods.buyTickets(lotteryId, ticketCount).send({ from: accounts[0] });
+                showMessage(`Tickets purchased successfully! Tx Hash: ${tx.transactionHash}`, 'success');
+            } catch (error) {
+                showMessage(`Error buying tickets: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('buyTicketsBtn').disabled = false;
+            }
+        }
+
+        // Show message
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerText = text;
+            messageDiv.className = type;
+        }
+
+        // Initialize on page load
+        window.onload = () => {
+            if (window.ethereum) {
+                window.ethereum.on('accountsChanged', (newAccounts) => {
+                    accounts = newAccounts;
+                    if (accounts.length > 0) {
+                        document.getElementById('walletInfo').innerText = `Wallet: ${accounts[0]}`;
+                        document.getElementById('connectWallet').style.display = 'none';
+                        document.getElementById('delinkWallet').style.display = 'block';
+                        initContracts();
+                        handleAction();
+                    } else {
+                        delinkWallet();
+                    }
+                });
+            }
+            initWeb3();
+        };
     </script>
 </body>
 </html>
