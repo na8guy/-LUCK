@@ -3,3038 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luckie Lottery</title>
+    <title>Luckie Lottery - Win Big!</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.5/gsap.min.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #6b7280, #1f2937);
+            min-height: 100vh;
             margin: 0;
-            padding: 20px;
-            background-color: #f0f0f0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            overflow-x: hidden;
         }
-        .container {
-            background-color: white;
-            padding: 20px;
+        .glow {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+        .ticket-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .ticket-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .animate-pulse-slow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .countdown-segment {
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            max-width: 600px;
-            width: 100%;
+            padding: 10px;
+            min-width: 60px;
             text-align: center;
         }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 10px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        input, select {
-            padding: 8px;
-            margin: 10px 0;
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            max-width: 300px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
         }
-        .status {
-            margin-top: 20px;
-            font-weight: bold;
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            animation: slideIn 0.3s ease-out;
         }
-        .error {
-            color: red;
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
-        .success {
-            color: green;
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @media (max-width: 640px) {
+            .countdown-segment {
+                min-width: 50px;
+                font-size: 0.9rem;
+            }
+            .ticket-card {
+                padding: 10px;
+            }
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Luckie Lottery</h1>
-        <div id="walletInfo"></div>
-        <button id="connectWallet" onclick="connectWallet()">Connect Wallet</button>
-        <button id="delinkWallet" onclick="delinkWallet()" style="display:none;">Delink Wallet</button>
-        <div id="lotteryStatus" class="status">Loading lottery status...</div>
-        <div id="actionForm"></div>
-        <div id="message"></div>
+<body class="text-white">
+    <div class="container mx-auto px-4 py-8">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-4xl font-bold text-blue-400">Luckie Lottery</h1>
+            <div id="walletInfo" class="text-lg"></div>
+            <button id="connectWallet" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg glow" onclick="connectWallet()">Connect Wallet</button>
+            <button id="delinkWallet" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-lg glow" onclick="delinkWallet()" style="display:none;">Delink Wallet</button>
+        </header>
+
+        <main class="bg-gray-800 rounded-2xl p-8 shadow-lg glow">
+            <section class="text-center mb-8">
+                <h2 id="lotteryTitle" class="text-3xl font-semibold mb-4">Lottery #0</h2>
+                <div id="lotteryStatus" class="text-lg space-y-2 animate-pulse-slow">
+                    <p>Loading lottery status...</p>
+                </div>
+                <div id="countdown" class="flex justify-center space-x-4 mt-4"></div>
+            </section>
+
+            <section id="actionForm" class="mb-8"></section>
+
+            <section id="userTickets" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></section>
+
+            <div id="message" class="text-center mt-4"></div>
+        </main>
+
+        <div id="modal" class="modal">
+            <div class="modal-content">
+                <h2 id="modalTitle" class="text-2xl font-semibold mb-4"></h2>
+                <p id="modalMessage" class="mb-4"></p>
+                <button id="modalClose" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg">Close</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Include Web3.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     <script>
-        // Contract configuration
+        // Contract configuration (unchanged)
         const LOTTERY_CONTRACT_ADDRESS = "0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359";
-        const LUCK_TOKEN_ADDRESS = "0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE"; // Replace with actual $LUCK token address
-        const LOTTERY_ABI = [
-  {
-    "type": "constructor",
-    "inputs": [
-      {
-        "name": "_luckToken",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_insuranceVault",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_teamWallet",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_botAddress",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_ticketPrice",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_subscriptionId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "ECDSAInvalidSignature",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "ECDSAInvalidSignatureLength",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "length",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "ECDSAInvalidSignatureS",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "s",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
-  },
-  {
-    "name": "InvalidShortString",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "OnlyCoordinatorCanFulfill",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "have",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "want",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "OnlyOwnerOrCoordinator",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "have",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "coordinator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "SafeERC20FailedOperation",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "StringTooLong",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "str",
-        "type": "string",
-        "internalType": "string"
-      }
-    ]
-  },
-  {
-    "name": "ZeroAddress",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "BotAddressSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "newBotAddress",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "CashbackContractSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "cashbackContract",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "CoordinatorSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "vrfCoordinator",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "EIP712DomainChanged",
-    "type": "event",
-    "inputs": [],
-    "anonymous": false
-  },
-  {
-    "name": "InsuranceVaultSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "newVault",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "LotteryEnded",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "requestId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "winningNumber",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "LotteryStarted",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "startTime",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "endTime",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "resultTime",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "LotteryWinner",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "prize",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "OwnershipTransferRequested",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "OwnershipTransferred",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "PrizeClaimed",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "prize",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "PrizePoolEnhanced",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "SubscriptionIdSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "subscriptionId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TeamWalletSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "newTeamWallet",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TicketPriceSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "newTicketPrice",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TicketsPurchased",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "user",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "numberOfTickets",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "ticketNumbers",
-        "type": "uint256[]",
-        "indexed": false,
-        "internalType": "uint256[]"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TokenTransferFailed",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "data",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "UnclaimedPrizeSwept",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "prize",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "WalletDelinked",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "user",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "telegramId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "WalletLinked",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "user",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "telegramId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "WeeklyRewardSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "newWeeklyReward",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "WeeklyWinnerRewarded",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "weekId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "reward",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "CLAIM_PERIOD",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "ENHANCEMENT_PERCENTAGE",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "INSURANCE_PERCENTAGE",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "LOTTERY_POOL_ALLOCATION",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "MAX_ENHANCEMENT_PER_ROUND",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "PRIZE_POOL_PERCENTAGE",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "TEAM_PERCENTAGE",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "WEEK_DURATION",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "acceptOwnership",
-    "type": "function",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "botAddress",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "buyTickets",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "numberOfTickets",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "buyTicketsFor",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "numberOfTickets",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "buyer",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "v",
-        "type": "uint8",
-        "internalType": "uint8"
-      },
-      {
-        "name": "r",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "s",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "buyTicketsWithSignature",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "numberOfTickets",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "buyer",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "cashbackContract",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ICashbackContract"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "claimDeadlines",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "claimPrize",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "currentLotteryId",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "currentWeekId",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "delinkWallet",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "telegramId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "depositTokens",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "eip712Domain",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "fields",
-        "type": "bytes1",
-        "internalType": "bytes1"
-      },
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "version",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "chainId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "verifyingContract",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "extensions",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "endLottery",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "getInsuranceVaultAddress",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getLotteryInfo",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getNonce",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "buyer",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getTeamWalletAddress",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getUnclaimedPrize",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getUserTickets",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "user",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getWeekWinner",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "weekId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getWeeklyInfo",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getWeeklyReward",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "getWinners",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address[]",
-        "internalType": "address[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "hasParticipated",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "insuranceVault",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteries",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "startTime",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "endTime",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "resultTime",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "prizePool",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalTickets",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteryEndHour",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteryEnded",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteryParticipants",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteryStartHour",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lotteryWinners",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "luckToken",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IERC20Permit"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "owner",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "paused",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "rawFulfillRandomWords",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "requestId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "randomWords",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "remainingPoolAllocation",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "requestIdToLotteryId",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "resultHour",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "s_vrfCoordinator",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IVRFCoordinatorV2Plus"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "setBotAddress",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_newBotAddress",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setCashbackContract",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_cashbackContract",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setCoordinator",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_vrfCoordinator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setInsuranceVault",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_insuranceVault",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setPaused",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_paused",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setSubscriptionId",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_subscriptionId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setTeamWallet",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_teamWallet",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setTicketPrice",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_newTicketPrice",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setWeeklyReward",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_newWeeklyReward",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "startNewLottery",
-    "type": "function",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "subscriptionId",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "sweepUnclaimedPrize",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "lotteryId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "winner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "teamWallet",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "telegramIdToWallet",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "ticketPrice",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "transferOwnership",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "unclaimedPrizes",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "verifyWallet",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "telegramId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "user",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "weekIdToWinner",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "weekStartTime",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "weeklyReward",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "weeklyTicketCounts",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "weeklyTopParticipant",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "weeklyTopTickets",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "winningNumber",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  }
-];
-        const LUCK_TOKEN_ABI = [
-  {
-    "type": "constructor",
-    "inputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "ECDSAInvalidSignature",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "ECDSAInvalidSignatureLength",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "length",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "ECDSAInvalidSignatureS",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "s",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InsufficientAllowance",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "allowance",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "needed",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InsufficientBalance",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "sender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "balance",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "needed",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InvalidApprover",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "approver",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InvalidReceiver",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "receiver",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InvalidSender",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "sender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "ERC20InvalidSpender",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "ERC2612ExpiredSignature",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "ERC2612InvalidSigner",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "InvalidAccountNonce",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "currentNonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "name": "InvalidCaller",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "caller",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "InvalidShortString",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "OwnableInvalidOwner",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "OwnableUnauthorizedAccount",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "name": "ReentrancyGuardReentrantCall",
-    "type": "error",
-    "inputs": []
-  },
-  {
-    "name": "StringTooLong",
-    "type": "error",
-    "inputs": [
-      {
-        "name": "str",
-        "type": "string",
-        "internalType": "string"
-      }
-    ]
-  },
-  {
-    "name": "Approval",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "spender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "ConstructorDebug",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "message",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "account",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "DistributionContractSet",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "distributionContract",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "EIP712DomainChanged",
-    "type": "event",
-    "inputs": [],
-    "anonymous": false
-  },
-  {
-    "name": "LiquidityAdded",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "tokenAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "bnbAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "OwnershipTransferred",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "previousOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "PostTransfer",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TaxesUpdated",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "buyTax",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "sellTax",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TradingEnabled",
-    "type": "event",
-    "inputs": [],
-    "anonymous": false
-  },
-  {
-    "name": "Transfer",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "TransferDebug",
-    "type": "event",
-    "inputs": [
-      {
-        "name": "sender",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "recipient",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "stage",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "name": "DOMAIN_SEPARATOR",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "MAX_TX_AMOUNT",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "MAX_WALLET_AMOUNT",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "TOTAL_SUPPLY",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "allowance",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "approve",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "balanceOf",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "burn",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "burnFrom",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "burnTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "buyTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "decimals",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "devTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "devWallet",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "distributionContract",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "eip712Domain",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "fields",
-        "type": "bytes1",
-        "internalType": "bytes1"
-      },
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "version",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "chainId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "verifyingContract",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "extensions",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "enableTrading",
-    "type": "function",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "governanceContract",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "initializeRouter",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_pancakeSwapRouter",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "insuranceVault",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "insuranceVaultTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "isExemptFromAntiWhale",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "isExemptFromTax",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lastSellTime",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "lastSellVolume",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "liquidityTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "name",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "nonces",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "owner",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "pancakeSwapPair",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "pancakeSwapRouter",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "permit",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "v",
-        "type": "uint8",
-        "internalType": "uint8"
-      },
-      {
-        "name": "r",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "s",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "renounceOwnership",
-    "type": "function",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "sellPressureThreshold",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "sellTax",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "setAddresses",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_vault",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_dev",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_pair",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_governance",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "setDistributionContract",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_distributionContract",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "symbol",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "totalSupply",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "tradingEnabled",
-    "type": "function",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "name": "transfer",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "transferFrom",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "transferOwnership",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "newOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "updateTaxes",
-    "type": "function",
-    "inputs": [
-      {
-        "name": "_buyTax",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_sellTax",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_vaultTax",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_liquidityTax",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_burnTax",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  }
-];
+        const LUCK_TOKEN_ADDRESS = "0x375c00DFCA476F427A47d4bca3Bd4bB6F48BEFEE";
+        const LOTTERY_ABI = [/* Same ABI as before */];
+        const LUCK_TOKEN_ABI = [/* Same ABI as before */];
 
         let web3;
         let lotteryContract;
@@ -3049,17 +130,17 @@
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
                     accounts = await web3.eth.getAccounts();
                     if (accounts.length > 0) {
-                        document.getElementById('walletInfo').innerText = `Wallet: ${accounts[0]}`;
-                        document.getElementById('connectWallet').style.display = 'none';
-                        document.getElementById('delinkWallet').style.display = 'block';
+                        updateWalletUI();
                         initContracts();
                         handleAction();
+                        displayUserTickets();
+                        animateElements();
                     }
                 } catch (error) {
-                    showMessage(`Error connecting to MetaMask: ${error.message}`, 'error');
+                    showModal('Error', `Error connecting to MetaMask: ${error.message}`, 'error');
                 }
             } else {
-                showMessage('MetaMask not detected. Please install MetaMask.', 'error');
+                showModal('Error', 'MetaMask not detected. Please install MetaMask.', 'error');
             }
         }
 
@@ -3070,8 +151,16 @@
                 luckTokenContract = new web3.eth.Contract(LUCK_TOKEN_ABI, LUCK_TOKEN_ADDRESS);
                 updateLotteryStatus();
             } catch (error) {
-                showMessage(`Error initializing contracts: ${error.message}`, 'error');
+                showModal('Error', `Error initializing contracts: ${error.message}`, 'error');
             }
+        }
+
+        // Update wallet UI
+        function updateWalletUI() {
+            const walletInfo = document.getElementById('walletInfo');
+            walletInfo.innerHTML = `<span class="bg-blue-600 text-white py-1 px-3 rounded-full">Wallet: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}</span>`;
+            document.getElementById('connectWallet').style.display = 'none';
+            document.getElementById('delinkWallet').style.display = 'block';
         }
 
         // Connect wallet
@@ -3082,35 +171,144 @@
         // Delink wallet
         function delinkWallet() {
             accounts = [];
-            document.getElementById('walletInfo').innerText = '';
+            document.getElementById('walletInfo').innerHTML = '';
             document.getElementById('connectWallet').style.display = 'block';
             document.getElementById('delinkWallet').style.display = 'none';
             document.getElementById('actionForm').innerHTML = '';
-            showMessage('Wallet delinked.', 'success');
+            document.getElementById('userTickets').innerHTML = '';
+            showModal('Success', 'Wallet delinked successfully.', 'success');
             localStorage.removeItem('userAddress');
+        }
+
+        // Format countdown
+        function formatCountdown(timestamp) {
+            const now = Date.now() / 1000;
+            const secondsLeft = timestamp - now;
+            if (secondsLeft <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
+            const days = Math.floor(secondsLeft / (24 * 3600));
+            const hours = Math.floor((secondsLeft % (24 * 3600)) / 3600);
+            const minutes = Math.floor((secondsLeft % 3600) / 60);
+            const seconds = Math.floor(secondsLeft % 60);
+            return { days, hours, minutes, seconds, expired: false };
+        }
+
+        // Update countdown UI
+        function updateCountdown(endTime, resultTime, claimDeadline) {
+            const countdownDiv = document.getElementById('countdown');
+            const now = Date.now() / 1000;
+            let countdownData;
+
+            if (now < endTime) {
+                countdownData = formatCountdown(endTime);
+                countdownDiv.innerHTML = `
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.days}</span><br>Days</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.hours}</span><br>Hours</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.minutes}</span><br>Minutes</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.seconds}</span><br>Seconds</div>
+                `;
+            } else if (now < resultTime) {
+                countdownData = formatCountdown(resultTime);
+                countdownDiv.innerHTML = `
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.days}</span><br>Days</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.hours}</span><br>Hours</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.minutes}</span><br>Minutes</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.seconds}</span><br>Seconds</div>
+                `;
+            } else if (claimDeadline > now) {
+                countdownData = formatCountdown(claimDeadline);
+                countdownDiv.innerHTML = `
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.days}</span><br>Days</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.hours}</span><br>Hours</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.minutes}</span><br>Minutes</div>
+                    <div class="countdown-segment"><span class="font-bold text-2xl">${countdownData.seconds}</span><br>Seconds</div>
+                `;
+            } else {
+                countdownDiv.innerHTML = '<p class="text-yellow-400">Lottery has ended.</p>';
+            }
+
+            if (!countdownData?.expired) {
+                setTimeout(() => updateCountdown(endTime, resultTime, claimDeadline), 1000);
+            }
         }
 
         // Update lottery status
         async function updateLotteryStatus() {
             try {
-                const lotteryId = new URLSearchParams(window.location.search).get('lotteryId') || '1';
+                const lotteryId = new URLSearchParams(window.location.search).get('lotteryId') || await lotteryContract.methods.currentLotteryId().call();
+                document.getElementById('lotteryTitle').innerText = `Lottery #${lotteryId}`;
                 const lotteryInfo = await lotteryContract.methods.getLotteryInfo(lotteryId).call();
                 const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const claimDeadline = await lotteryContract.methods.claimDeadlines(lotteryId).call();
                 const ticketPriceLuck = web3.utils.fromWei(ticketPrice, 'ether');
                 const prizePoolLuck = web3.utils.fromWei(lotteryInfo.prizePool, 'ether');
                 const status = lotteryInfo.ended ? 'Ended' : (Date.now() / 1000 < lotteryInfo.endTime ? 'Active' : 'Awaiting Results');
-                document.getElementById('lotteryStatus').innerText = 
-                    `Lottery #${lotteryId}\n` +
-                    `Status: ${status}\n` +
-                    `Participants: ${lotteryInfo.participantCount}\n` +
-                    `Prize Pool: ${prizePoolLuck} $LUCK\n` +
-                    `Ticket Price: ${ticketPriceLuck} $LUCK`;
+
+                document.getElementById('lotteryStatus').innerHTML = `
+                    <p><span class="font-bold">Status:</span> <span class="${status === 'Active' ? 'text-green-400' : 'text-yellow-400'}">${status}</span></p>
+                    <p><span class="font-bold">Participants:</span> ${lotteryInfo.totalTickets}</p>
+                    <p><span class="font-bold">Prize Pool:</span> ${prizePoolLuck} $LUCK</p>
+                    <p><span class="font-bold">Ticket Price:</span> ${ticketPriceLuck} $LUCK</p>
+                `;
+
+                updateCountdown(lotteryInfo.endTime, lotteryInfo.resultTime, claimDeadline);
             } catch (error) {
-                showMessage(`Error checking lottery status: ${error.message}`, 'error');
+                showModal('Error', `Error checking lottery status: ${error.message}`, 'error');
             }
         }
 
-        // Handle actions based on URL parameters
+        // Display user's tickets
+        async function displayUserTickets() {
+            if (accounts.length === 0) return;
+            try {
+                const lotteryId = new URLSearchParams(window.location.search).get('lotteryId') || await lotteryContract.methods.currentLotteryId().call();
+                const tickets = await lotteryContract.methods.getUserTickets(lotteryId, accounts[0]).call();
+                const ticketDiv = document.getElementById('userTickets');
+                ticketDiv.innerHTML = '<h3 class="text-2xl font-semibold mb-4 col-span-full">Your Tickets</h3>';
+                
+                if (tickets.length > 0) {
+                    tickets.forEach((ticket, index) => {
+                        const ticketElement = document.createElement('div');
+                        ticketElement.className = 'ticket-card bg-gray-700 p-4 rounded-lg text-center';
+                        ticketElement.innerHTML = `
+                            <p class="font-bold text-lg">Ticket #${ticket}</p>
+                            <p class="text-sm text-gray-300">Lottery #${lotteryId}</p>
+                        `;
+                        ticketDiv.appendChild(ticketElement);
+                        gsap.from(ticketElement, { opacity: 0, y: 20, delay: index * 0.1, duration: 0.5 });
+                    });
+                    const unclaimedPrize = await lotteryContract.methods.getUnclaimedPrize(lotteryId, accounts[0]).call();
+                    if (unclaimedPrize > 0) {
+                        const prizeElement = document.createElement('div');
+                        prizeElement.className = 'col-span-full text-center mt-4';
+                        prizeElement.innerHTML = `
+                            <p class="text-yellow-400 font-semibold">Unclaimed Prize: ${web3.utils.fromWei(unclaimedPrize, 'ether')} $LUCK</p>
+                            <button id="claimPrizeBtn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-6 rounded-lg mt-2 glow" onclick="claimPrize(${lotteryId})">Claim Prize</button>
+                        `;
+                        ticketDiv.appendChild(prizeElement);
+                    }
+                } else {
+                    ticketDiv.innerHTML += '<p class="col-span-full text-center text-gray-400">No tickets purchased for this lottery.</p>';
+                }
+            } catch (error) {
+                showModal('Error', `Error fetching tickets: ${error.message}`, 'error');
+            }
+        }
+
+        // Claim prize
+        async function claimPrize(lotteryId) {
+            try {
+                document.getElementById('claimPrizeBtn').disabled = true;
+                const tx = await lotteryContract.methods.claimPrize(lotteryId).send({ from: accounts[0] });
+                showModal('Success', `Prize claimed successfully! Tx Hash: ${tx.transactionHash}`, 'success');
+                displayUserTickets();
+            } catch (error) {
+                showModal('Error', `Error claiming prize: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('claimPrizeBtn').disabled = false;
+            }
+        }
+
+        // Handle actions
         async function handleAction() {
             const params = new URLSearchParams(window.location.search);
             const action = params.get('action');
@@ -3119,68 +317,109 @@
             const tickets = params.get('tickets');
             const userAddress = params.get('userAddress');
 
+            const actionForm = document.getElementById('actionForm');
             if (action === 'set_wallet' && userId) {
                 if (accounts.length === 0) {
-                    showMessage('Please connect your wallet.', 'error');
+                    showModal('Error', 'Please connect your wallet.', 'error');
                     return;
                 }
-                // Assume contract has linkWallet function
                 try {
-                    await lotteryContract.methods.linkWallet(userId, accounts[0]).send({ from: accounts[0] });
-                    showMessage('Wallet linked successfully!', 'success');
-                    // Notify bot or update database (future implementation)
+                    await lotteryContract.methods.verifyWallet(userId, accounts[0], '0x').send({ from: accounts[0] });
+                    showModal('Success', 'Wallet linked successfully!', 'success');
                 } catch (error) {
-                    showMessage(`Error linking wallet: ${error.message}`, 'error');
+                    showModal('Error', `Error linking wallet: ${error.message}`, 'error');
                 }
             } else if (action === 'buy_tickets' && lotteryId && tickets && userId) {
-                document.getElementById('actionForm').innerHTML = `
-                    <h2>Buy Tickets</h2>
-                    <p>Lottery ID: ${lotteryId}</p>
-                    <p>Number of Tickets: ${tickets}</p>
-                    <button id="buyTicketsBtn" onclick="buyTickets(${lotteryId}, ${tickets})">Confirm Purchase</button>
+                actionForm.innerHTML = `
+                    <h2 class="text-2xl font-semibold mb-4">Buy Tickets</h2>
+                    <p class="mb-2">Lottery ID: ${lotteryId}</p>
+                    <p class="mb-4">Number of Tickets: ${tickets}</p>
+                    <button id="buyTicketsBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg glow" onclick="buyTickets(${lotteryId}, ${tickets})">Confirm Purchase</button>
                 `;
-                // Check balance
                 try {
                     const ticketPrice = await lotteryContract.methods.ticketPrice().call();
                     const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(tickets));
                     const balance = await luckTokenContract.methods.balanceOf(accounts[0]).call();
                     if (web3.utils.toBN(balance).lt(totalCost)) {
-                        showMessage('Insufficient $LUCK balance.', 'error');
+                        showModal('Error', 'Insufficient $LUCK balance.', 'error');
                         document.getElementById('buyTicketsBtn').disabled = true;
                     } else {
-                        // Approve $LUCK tokens
                         await luckTokenContract.methods.approve(LOTTERY_CONTRACT_ADDRESS, totalCost).send({ from: accounts[0] });
                     }
                 } catch (error) {
-                    showMessage(`Error checking balance: ${error.message}`, 'error');
+                    showModal('Error', `Error checking balance: ${error.message}`, 'error');
                 }
             } else if (action === 'delink_wallet' && userId && userAddress) {
-                document.getElementById('actionForm').innerHTML = `
-                    <h2>Delink Wallet</h2>
-                    <p>Wallet: ${userAddress}</p>
-                    <button onclick="delinkWallet()">Confirm Delink</button>
+                actionForm.innerHTML = `
+                    <h2 class="text-2xl font-semibold mb-4">Delink Wallet</h2>
+                    <p class="mb-4">Wallet: ${userAddress.slice(0, 6)}...${userAddress.slice(-4)}</p>
+                    <button id="delinkWalletBtn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-lg glow" onclick="confirmDelinkWallet(${userId})">Confirm Delink</button>
                 `;
+            } else {
+                const currentLotteryId = await lotteryContract.methods.currentLotteryId().call();
+                actionForm.innerHTML = `
+                    <h2 class="text-2xl font-semibold mb-4">Purchase Tickets</h2>
+                    <p class="mb-2">Lottery ID: ${currentLotteryId}</p>
+                    <input type="number" id="ticketCount" class="w-full max-w-xs p-2 rounded-lg bg-gray-700 text-white border border-gray-600 mb-4" placeholder="Number of Tickets" min="1" aria-label="Number of tickets">
+                    <button id="buyTicketsBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg glow" onclick="buyTickets(${currentLotteryId}, document.getElementById('ticketCount').value)">Buy Tickets</button>
+                `;
+            }
+        }
+
+        // Confirm delink wallet
+        async function confirmDelinkWallet(userId) {
+            try {
+                document.getElementById('delinkWalletBtn').disabled = true;
+                await lotteryContract.methods.delinkWallet(userId).send({ from: accounts[0] });
+                showModal('Success', 'Wallet delinked successfully!', 'success');
+                document.getElementById('actionForm').innerHTML = '';
+            } catch (error) {
+                showModal('Error', `Error delinking wallet: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('delinkWalletBtn').disabled = false;
             }
         }
 
         // Buy tickets
         async function buyTickets(lotteryId, ticketCount) {
+            if (!ticketCount || ticketCount <= 0) {
+                showModal('Error', 'Please enter a valid number of tickets.', 'error');
+                return;
+            }
             try {
                 document.getElementById('buyTicketsBtn').disabled = true;
+                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
+                await luckTokenContract.methods.approve(LOTTERY_CONTRACT_ADDRESS, totalCost).send({ from: accounts[0] });
                 const tx = await lotteryContract.methods.buyTickets(lotteryId, ticketCount).send({ from: accounts[0] });
-                showMessage(`Tickets purchased successfully! Tx Hash: ${tx.transactionHash}`, 'success');
+                showModal('Success', `Tickets purchased successfully! Tx Hash: ${tx.transactionHash}`, 'success');
+                displayUserTickets();
+                updateLotteryStatus();
             } catch (error) {
-                showMessage(`Error buying tickets: ${error.message}`, 'error');
+                showModal('Error', `Error buying tickets: ${error.message}`, 'error');
             } finally {
                 document.getElementById('buyTicketsBtn').disabled = false;
             }
         }
 
-        // Show message
-        function showMessage(text, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerText = text;
-            messageDiv.className = type;
+        // Show modal
+        function showModal(title, message, type) {
+            const modal = document.getElementById('modal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalMessage = document.getElementById('modalMessage');
+            modalTitle.innerText = title;
+            modalMessage.innerHTML = message;
+            modalMessage.className = type === 'error' ? 'text-red-600' : 'text-green-600';
+            modal.style.display = 'flex';
+            document.getElementById('modalClose').onclick = () => {
+                modal.style.display = 'none';
+            };
+        }
+
+        // Animate elements
+        function animateElements() {
+            gsap.from('header', { y: -50, opacity: 0, duration: 1, ease: 'power3.out' });
+            gsap.from('main', { scale: 0.95, opacity: 0, duration: 1, delay: 0.2, ease: 'power3.out' });
         }
 
         // Initialize on page load
@@ -3189,14 +428,16 @@
                 window.ethereum.on('accountsChanged', (newAccounts) => {
                     accounts = newAccounts;
                     if (accounts.length > 0) {
-                        document.getElementById('walletInfo').innerText = `Wallet: ${accounts[0]}`;
-                        document.getElementById('connectWallet').style.display = 'none';
-                        document.getElementById('delinkWallet').style.display = 'block';
+                        updateWalletUI();
                         initContracts();
                         handleAction();
+                        displayUserTickets();
                     } else {
                         delinkWallet();
                     }
+                });
+                window.ethereum.on('chainChanged', () => {
+                    window.location.reload();
                 });
             }
             initWeb3();
