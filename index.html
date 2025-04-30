@@ -4,581 +4,214 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Luckie Lottery</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/4.3.0/web3.min.js"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body {
-            background-color: #f3f4f6;
-            font-family: 'Arial', sans-serif;
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-in;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #status, #error { margin: 10px 0; }
+        #actionForm { margin-top: 20px; }
+        button { padding: 10px; margin: 5px; }
+        input { padding: 8px; margin: 5px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <h1>Luckie Lottery</h1>
+    <div id="walletStatus">Wallet: Not connected</div>
+    <button id="setWalletButton" onclick="setWallet()">Connect Wallet</button>
+    <button id="delinkWalletButton" onclick="delinkWallet()" class="hidden">Delink Wallet</button>
+    <div id="lotteryStatus">Loading lottery status...</div>
+    <div id="userInfo"></div>
+    <div id="actionForm" class="hidden">
+        <h3 id="actionTitle"></h3>
+        <div id="actionDetails"></div>
+        <input id="ticketCount" type="number" placeholder="Number of Tickets" min="1" class="hidden">
+        <button id="actionButton" class="hidden">Execute Action</button>
+    </div>
+    <div id="error"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    <script>
+        let web3, lotteryContract, tokenContract, userAccount;
+        const contractAddress = "0x68cd3f484B9b75d6336B942B3FEa11FBDBDfc359";
+        // Replace with actual $LUCK token contract address
+        const tokenContractAddress = "0xYOUR_TOKEN_CONTRACT_ADDRESS"; // Update from CASHBACK_CONTRACT_ADDRESS or TOKEN_DISTRIBUTION_CONTRACT_ADDRESS
+        // ABI from LotteryContract.json (simplified)
+        const lotteryABI = [
+            {"constant":true,"inputs":[{"name":"lotteryId","type":"uint256"}],"name":"getLotteryInfo","outputs":[{"name":"startTime","type":"uint256"},{"name":"endTime","type":"uint256"},{"name":"resultTime","type":"uint256"},{"name":"ended","type":"bool"},{"name":"participants","type":"uint256"},{"name":"prizePool","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
+            {"constant":true,"inputs":[],"name":"currentLotteryId","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
+            {"constant":false,"inputs":[{"name":"lotteryId","type":"uint256"},{"name":"numberOfTickets","type":"uint256"}],"name":"buyTickets","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},
+            {"constant":true,"inputs":[],"name":"ticketPrice","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
+            {"constant":true,"inputs":[],"name":"paused","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},
+            {"constant":true,"inputs":[{"name":"lotteryId","type":"uint256"},{"name":"user","type":"address"}],"name":"getUserTickets","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"}
+        ];
+        // ERC20 ABI for $LUCK token
+        const tokenABI = [
+            {"constant":true,"inputs":[{"name":"account","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},
+            {"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"}
+        ];
 
-        // Utility to parse URL parameters
-        const getQueryParams = () => {
-            const params = new URLSearchParams(window.location.search);
-            return {
-                action: params.get('action'),
-                userId: params.get('userId'),
-                messageNonce: params.get('messageNonce'),
-                permitNonce: params.get('permitNonce'),
-                deadline: params.get('deadline'),
-                lotteryContract: params.get('lotteryContract'),
-                luckToken: params.get('luckToken'),
-                lotteryId: params.get('lotteryId'),
-                userAddress: params.get('userAddress'),
-                ticketPrice: params.get('ticketPrice'),
-                cashbackContract: params.get('cashbackContract'),
-                tokenDistributionContract: params.get('tokenDistributionContract')
-            };
-        };
+        async function initWeb3() {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                lotteryContract = new web3.eth.Contract(lotteryABI, contractAddress);
+                tokenContract = new web3.eth.Contract(tokenABI, tokenContractAddress);
+                // Check if wallet is already connected
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                if (accounts.length > 0) {
+                    userAccount = accounts[0];
+                    updateWalletStatus();
+                }
+                checkLotteryStatus();
+                handleBotAction();
+            } else {
+                document.getElementById('error').innerText = "Please install MetaMask!";
+            }
+        }
 
-        // Main App Component
-        const App = () => {
-            const [web3, setWeb3] = useState(null);
-            const [account, setAccount] = useState(null);
-            const [error, setError] = useState('');
-            const [loading, setLoading] = useState(false);
-            const [result, setResult] = useState('');
-            const [ticketCount, setTicketCount] = useState(1);
-            const params = getQueryParams();
+        async function setWallet() {
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                userAccount = accounts[0];
+                localStorage.setItem('walletAddress', userAccount);
+                updateWalletStatus();
+                checkLotteryStatus();
+            } catch (error) {
+                document.getElementById('error').innerText = `Error connecting wallet: ${error.message}`;
+            }
+        }
 
-            // Initialize Web3
-            useEffect(() => {
-                const initWeb3 = async () => {
-                    if (window.ethereum) {
-                        try {
-                            const web3Instance = new Web3(window.ethereum);
-                            setWeb3(web3Instance);
-                            // Restore wallet from local storage
-                            const storedAccount = localStorage.getItem('connectedAccount');
-                            if (storedAccount) {
-                                setAccount(storedAccount);
-                            }
-                        } catch (err) {
-                            setError('Failed to initialize Web3: ' + err.message);
+        async function delinkWallet() {
+            try {
+                userAccount = null;
+                localStorage.removeItem('walletAddress');
+                updateWalletStatus();
+                document.getElementById('actionForm').classList.add('hidden');
+                document.getElementById('lotteryStatus').innerText = "Please connect a wallet to view lottery details.";
+            } catch (error) {
+                document.getElementById('error').innerText = `Error delinking wallet: ${error.message}`;
+            }
+        }
+
+        function updateWalletStatus() {
+            if (userAccount) {
+                document.getElementById('walletStatus').innerText = `Wallet: ${userAccount}`;
+                document.getElementById('setWalletButton').classList.add('hidden');
+                document.getElementById('delinkWalletButton').classList.remove('hidden');
+            } else {
+                document.getElementById('walletStatus').innerText = "Wallet: Not connected";
+                document.getElementById('setWalletButton').classList.remove('hidden');
+                document.getElementById('delinkWalletButton').classList.add('hidden');
+            }
+        }
+
+        async function checkLotteryStatus() {
+            if (!userAccount) {
+                document.getElementById('lotteryStatus').innerText = "Please connect a wallet to view lottery details.";
+                return;
+            }
+            try {
+                const currentId = await lotteryContract.methods.currentLotteryId().call();
+                let lotteryId = currentId;
+                let lotteryInfo = await lotteryContract.methods.getLotteryInfo(currentId).call();
+                const currentTime = Math.floor(Date.now() / 1000);
+
+                const paused = await lotteryContract.methods.paused().call();
+                if (paused) {
+                    document.getElementById('lotteryStatus').innerText = `Lottery is paused. Ticket purchases are disabled.`;
+                    document.getElementById('actionForm').classList.add('hidden');
+                    return;
+                }
+
+                // Check if in 1-hour break
+                if (lotteryInfo.endTime <= currentTime && currentTime < lotteryInfo.resultTime) {
+                    document.getElementById('lotteryStatus').innerText = `Lottery #${currentId} is in result preparation. Ticket purchases paused until ${new Date(lotteryInfo.resultTime * 1000).toUTCString()}.`;
+                    document.getElementById('actionForm').classList.add('hidden');
+                    return;
+                }
+
+                // If current lottery is ended, try next lottery
+                if (lotteryInfo.ended) {
+                    lotteryId = parseInt(currentId) + 1;
+                    try {
+                        lotteryInfo = await lotteryContract.methods.getLotteryInfo(lotteryId).call();
+                        if (lotteryInfo.ended) {
+                            document.getElementById('lotteryStatus').innerText = `No active or upcoming lottery available.`;
+                            document.getElementById('actionForm').classList.add('hidden');
+                            return;
                         }
-                    } else {
-                        setError('MetaMask is not installed. Please install MetaMask to proceed.');
+                    } catch (error) {
+                        document.getElementById('lotteryStatus').innerText = `No upcoming lottery available.`;
+                        document.getElementById('actionForm').classList.add('hidden');
+                        return;
                     }
-                };
-                initWeb3();
-            }, []);
-
-            // Connect Wallet
-            const connectWallet = async () => {
-                setLoading(true);
-                setError('');
-                try {
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    const accounts = await web3.eth.getAccounts();
-                    setAccount(accounts[0]);
-                    localStorage.setItem('connectedAccount', accounts[0]);
-                    setResult('Wallet connected: ' + accounts[0]);
-                } catch (err) {
-                    setError('Failed to connect wallet: ' + err.message);
                 }
-                setLoading(false);
-            };
 
-            // Disconnect Wallet
-            const disconnectWallet = () => {
-                setAccount(null);
-                localStorage.removeItem('connectedAccount');
-                setResult('');
-                setError('');
-            };
-
-            // Handle set_wallet action
-            const handleSetWallet = async () => {
-                if (!account || !web3) return;
-                setLoading(true);
-                setError('');
-                try {
-                    const { userId, messageNonce, permitNonce, deadline, lotteryContract, luckToken } = params;
-
-                    // Check if wallet is already linked
-                    const lotteryContractInstance = new web3.eth.Contract(LotteryContractABI, lotteryContract);
-                    const linkedWallet = await lotteryContractInstance.methods.telegramIdToWallet(userId).call();
-                    let messageSignature = 'Skipped (wallet already linked)';
-
-                    if (linkedWallet.toLowerCase() !== account.toLowerCase()) {
-                        // EIP-712 Message for wallet linking
-                        const domain = {
-                            name: 'LuckLotteryContract',
-                            version: '1',
-                            chainId: 97, // BSC Testnet
-                            verifyingContract: lotteryContract
-                        };
-                        const types = {
-                            Message: [
-                                { name: 'telegramId', type: 'uint256' },
-                                { name: 'message', type: 'string' }
-                            ]
-                        };
-                        const value = {
-                            telegramId: userId,
-                            message: 'Link your wallet to the Lottery Bot'
-                        };
-                        messageSignature = await web3.eth.personal.sign(
-                            JSON.stringify({ types, primaryType: 'Message', domain, message: value }),
-                            account
-                        );
-                    }
-
-                    // EIP-712 Permit for $LUCK token
-                    const luckTokenInstance = new web3.eth.Contract(LuckTokenABI, luckToken);
-                    const domainPermit = {
-                        name: 'LuckToken',
-                        version: '1',
-                        chainId: 97,
-                        verifyingContract: luckToken
-                    };
-                    const typesPermit = {
-                        Permit: [
-                            { name: 'owner', type: 'address' },
-                            { name: 'spender', type: 'address' },
-                            { name: 'value', type: 'uint256' },
-                            { name: 'nonce', type: 'uint256' },
-                            { name: 'deadline', type: 'uint256' }
-                        ]
-                    };
-                    const valuePermit = {
-                        owner: account,
-                        spender: lotteryContract,
-                        value: '115792089237316195423570985008687907853269984665640564039457584007913129639935', // Max uint256
-                        nonce: permitNonce,
-                        deadline
-                    };
-                    const permitData = JSON.stringify({ types: typesPermit, primaryType: 'Permit', domain: domainPermit, message: valuePermit });
-                    const permitSignature = await web3.eth.personal.sign(permitData, account);
-                    const { v, r, s } = web3.eth.accounts._parseSignature(permitSignature);
-
-                    setResult(
-                        `Please copy and paste this into Telegram:\n\n` +
-                        `Message Signature: ${messageSignature}\n` +
-                        `Permit Signature (v,r,s): ${v},0x${r},0x${s}\n` +
-                        `Permit Deadline: ${deadline}`
-                    );
-                } catch (err) {
-                    setError('Failed to generate signatures: ' + err.message);
-                }
-                setLoading(false);
-            };
-
-            // Handle buy_tickets action
-            const handleBuyTickets = async () => {
-                if (!account || !web3) return;
-                setLoading(true);
-                setError('');
-                try {
-                    const { lotteryId, userAddress, ticketPrice, lotteryContract, luckToken } = params;
-                    if (account.toLowerCase() !== userAddress.toLowerCase()) {
-                        throw new Error('Connected wallet does not match the linked wallet.');
-                    }
-
-                    const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
-                    const luckTokenInstance = new web3.eth.Contract(LuckTokenABI, luckToken);
-                    const balance = await luckTokenInstance.methods.balanceOf(account).call();
-                    if (web3.utils.toBN(balance).lt(totalCost)) {
-                        throw new Error('Insufficient $LUCK balance.');
-                    }
-
-                    const lotteryContractInstance = new web3.eth.Contract(LotteryContractABI, lotteryContract);
-                    const tx = await lotteryContractInstance.methods.buyTickets(lotteryId, ticketCount).send({ from: account });
-                    setResult(`Tickets purchased successfully!\nTransaction Hash: ${tx.transactionHash}`);
-                } catch (err) {
-                    setError('Failed to buy tickets: ' + err.message);
-                }
-                setLoading(false);
-            };
-
-            // Handle claim_cashback action
-            const handleClaimCashback = async () => {
-                if (!account || !web3) return;
-                setLoading(true);
-                setError('');
-                try {
-                    const { userAddress, cashbackContract } = params;
-                    if (account.toLowerCase() !== userAddress.toLowerCase()) {
-                        throw new Error('Connected wallet does not match the linked wallet.');
-                    }
-
-                    const cashbackContractInstance = new web3.eth.Contract(CashbackContractABI, cashbackContract);
-                    const tx = await cashbackContractInstance.methods.claimCashback().send({ from: account });
-                    setResult(`Cashback claimed successfully!\nTransaction Hash: ${tx.transactionHash}`);
-                } catch (err) {
-                    setError('Failed to claim cashback: ' + err.message);
-                }
-                setLoading(false);
-            };
-
-            // Handle token_distribution action
-            const handleTokenDistribution = async () => {
-                if (!account || !web3) return;
-                setLoading(true);
-                setError('');
-                try {
-                    const { userAddress, tokenDistributionContract } = params;
-                    if (account.toLowerCase() !== userAddress.toLowerCase()) {
-                        throw new Error('Connected wallet does not match the linked wallet.');
-                    }
-
-                    const tokenDistributionContractInstance = new web3.eth.Contract(TokenDistributionContractABI, tokenDistributionContract);
-                    const tx = await tokenDistributionContractInstance.methods.claimTokens().send({ from: account });
-                    setResult(`Tokens claimed successfully!\nTransaction Hash: ${tx.transactionHash}`);
-                } catch (err) {
-                    setError('Failed to claim tokens: ' + err.message);
-                }
-                setLoading(false);
-            };
-
-            // Handle delink_wallet action
-            const handleDelinkWallet = async () => {
-                if (!account || !web3) return;
-                setLoading(true);
-                setError('');
-                try {
-                    const { userId, userAddress, lotteryContract } = params;
-                    if (account.toLowerCase() !== userAddress.toLowerCase()) {
-                        throw new Error('Connected wallet does not match the linked wallet.');
-                    }
-
-                    const lotteryContractInstance = new web3.eth.Contract(LotteryContractABI, lotteryContract);
-                    const tx = await lotteryContractInstance.methods.deregisterWallet(userId).send({ from: account });
-                    disconnectWallet();
-                    setResult(`Wallet delinked successfully!\nTransaction Hash: ${tx.transactionHash}`);
-                } catch (err) {
-                    setError('Failed to delink wallet: ' + err.message);
-                }
-                setLoading(false);
-            };
-
-            // Render content based on action
-            const renderContent = () => {
-                switch (params.action) {
-                    case 'set_wallet':
-                        return (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Link Your Wallet</h2>
-                                <p>Connect your MetaMask wallet and sign the messages to link it with your Telegram ID.</p>
-                                {!account ? (
-                                    <button
-                                        onClick={connectWallet}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Connecting...' : 'Connect Wallet'}
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <p className="text-green-600">Connected: {account}</p>
-                                        <button
-                                            onClick={handleSetWallet}
-                                            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                                            disabled={loading}
-                                        >
-                                            {loading ? 'Generating Signatures...' : 'Generate Signatures'}
-                                        </button>
-                                        <button
-                                            onClick={disconnectWallet}
-                                            className="ml-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                )}
-                                {result && (
-                                    <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                        <h3 className="font-semibold">Result:</h3>
-                                        <pre className="whitespace-pre-wrap">{result}</pre>
-                                        <p className="mt-2 text-sm text-gray-600">
-                                            Copy the signatures above and paste them into Telegram to complete the linking process.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    case 'buy_tickets':
-                        return (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Buy Lottery Tickets</h2>
-                                <p>Purchase tickets for Lottery #{params.lotteryId}.</p>
-                                {!account ? (
-                                    <button
-                                        onClick={connectWallet}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Connecting...' : 'Connect Wallet'}
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <p className="text-green-600">Connected: {account}</p>
-                                        <div className="flex items-center space-x-4">
-                                            <label>Number of Tickets:</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={ticketCount}
-                                                onChange={(e) => setTicketCount(Math.max(1, parseInt(e.target.value) || 1))}
-                                                className="border rounded px-2 py-1 w-20"
-                                            />
-                                            <p>Total Cost: {(ticketCount * (params.ticketPrice / 1e18)).toFixed(2)} $LUCK</p>
-                                        </div>
-                                        <button
-                                            onClick={handleBuyTickets}
-                                            className="mt-4 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                                            disabled={loading}
-                                        >
-                                            {loading ? 'Purchasing...' : 'Buy Tickets'}
-                                        </button>
-                                        <button
-                                            onClick={disconnectWallet}
-                                            className="ml-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                )}
-                                {result && (
-                                    <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                        <h3 className="font-semibold">Result:</h3>
-                                        <p>{result}</p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    case 'claim_cashback':
-                        return (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Claim Cashback</h2>
-                                <p>Claim your available $LUCK cashback rewards.</p>
-                                {!account ? (
-                                    <button
-                                        onClick={connectWallet}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Connecting...' : 'Connect Wallet'}
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <p className="text-green-600">Connected: {account}</p>
-                                        <button
-                                            onClick={handleClaimCashback}
-                                            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                                            disabled={loading}
-                                        >
-                                            {loading ? 'Claiming...' : 'Claim Cashback'}
-                                        </button>
-                                        <button
-                                            onClick={disconnectWallet}
-                                            className="ml-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                )}
-                                {result && (
-                                    <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                        <h3 className="font-semibold">Result:</h3>
-                                        <p>{result}</p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    case 'token_distribution':
-                        return (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Claim Token Distribution</h2>
-                                <p>Claim your $LUCK tokens from the distribution contract.</p>
-                                {!account ? (
-                                    <button
-                                        onClick={connectWallet}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Connecting...' : 'Connect Wallet'}
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <p className="text-green-600">Connected: {account}</p>
-                                        <button
-                                            onClick={handleTokenDistribution}
-                                            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                                            disabled={loading}
-                                        >
-                                            {loading ? 'Claiming...' : 'Claim Tokens'}
-                                        </button>
-                                        <button
-                                            onClick={disconnectWallet}
-                                            className="ml-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                )}
-                                {result && (
-                                    <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                        <h3 className="font-semibold">Result:</h3>
-                                        <p>{result}</p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    case 'delink_wallet':
-                        return (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Delink Wallet</h2>
-                                <p>Delink your wallet from the Lottery Bot.</p>
-                                {!account ? (
-                                    <button
-                                        onClick={connectWallet}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Connecting...' : 'Connect Wallet'}
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <p className="text-green-600">Connected: {account}</p>
-                                        <button
-                                            onClick={handleDelinkWallet}
-                                            className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
-                                            disabled={loading}
-                                        >
-                                            {loading ? 'Delinking...' : 'Delink Wallet'}
-                                        </button>
-                                        <button
-                                            onClick={disconnectWallet}
-                                            className="ml-4 bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700"
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                )}
-                                {result && (
-                                    <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                        <h3 className="font-semibold">Result:</h3>
-                                        <p>{result}</p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    default:
-                        return <p className="text-red-600">Invalid action. Please use a valid URL provided by the Telegram bot.</p>;
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex items-center justify-center p-4 fade-in">
-                    <div className="bg-white p-8 rounded-lg shadow-lg max-w-lg w-full">
-                        <h1 className="text-3xl font-bold text-center mb-6">Luckie Lottery</h1>
-                        {error && <p className="text-red-600 mb-4">{error}</p>}
-                        {renderContent()}
-                    </div>
-                </div>
-            );
-        };
-
-        // Contract ABIs (minimal for brevity, should match bot.py)
-        const LuckTokenABI = [
-            {
-                "constant": False,
-                "inputs": [
-                    {"name": "owner", "type": "address"},
-                    {"name": "spender", "type": "address"},
-                    {"name": "value", "type": "uint256"},
-                    {"name": "deadline", "type": "uint256"},
-                    {"name": "v", "type": "uint8"},
-                    {"name": "r", "type": "bytes32"},
-                    {"name": "s", "type": "bytes32"}
-                ],
-                "name": "permit",
-                "outputs": [],
-                "type": "function"
-            },
-            {
-                "constant": True,
-                "inputs": [{"name": "_owner", "type": "address"}],
-                "name": "balanceOf",
-                "outputs": [{"name": "balance", "type": "uint256"}],
-                "type": "function"
-            },
-            {
-                "constant": True,
-                "inputs": [{"name": "owner", "type": "address"}],
-                "name": "nonces",
-                "outputs": [{"name": "", "type": "uint256"}],
-                "type": "function"
+                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const userTickets = await lotteryContract.methods.getUserTickets(lotteryId, userAccount).call();
+                const tokenDecimals = await tokenContract.methods.decimals().call();
+                const userBalance = await tokenContract.methods.balanceOf(userAccount).call();
+                document.getElementById('lotteryStatus').innerText = `Lottery #${lotteryId} is active! Ticket Price: ${web3.utils.fromWei(ticketPrice, 'ether')} $LUCK`;
+                document.getElementById('userInfo').innerText = `Your Balance: ${web3.utils.fromWei(userBalance, 'ether')} $LUCK\nYour Tickets: ${userTickets} for Lottery #${lotteryId}`;
+            } catch (error) {
+                document.getElementById('error').innerText = `Error checking lottery status: ${error.message}`;
             }
-        ];
+        }
 
-        const LotteryContractABI = [
-            {
-                "constant": True,
-                "inputs": [{"name": "telegramId", "type": "uint256"}],
-                "name": "telegramIdToWallet",
-                "outputs": [{"name": "", "type": "address"}],
-                "type": "function"
-            },
-            {
-                "constant": False,
-                "inputs": [
-                    {"name": "lotteryId", "type": "uint256"},
-                    {"name": "ticketCount", "type": "uint256"}
-                ],
-                "name": "buyTickets",
-                "outputs": [],
-                "type": "function"
-            },
-            {
-                "constant": False,
-                "inputs": [{"name": "telegramId", "type": "uint256"}],
-                "name": "deregisterWallet",
-                "outputs": [],
-                "type": "function"
+        async function handleBotAction() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const action = urlParams.get('action');
+            if (!action) return;
+
+            document.getElementById('actionForm').classList.remove('hidden');
+            document.getElementById('actionButton').classList.remove('hidden');
+
+            if (action === 'buy_tickets') {
+                const lotteryId = urlParams.get('lotteryId') || await lotteryContract.methods.currentLotteryId().call();
+                const ticketCount = urlParams.get('tickets') || 1;
+                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const tokenDecimals = await tokenContract.methods.decimals().call();
+                const userBalance = userAccount ? await tokenContract.methods.balanceOf(userAccount).call() : '0';
+                const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
+
+                document.getElementById('actionTitle').innerText = `Buy Tickets for Lottery #${lotteryId}`;
+                document.getElementById('actionDetails').innerText = `Ticket Price: ${web3.utils.fromWei(ticketPrice, 'ether')} $LUCK\nNumber of Tickets: ${ticketCount}\nTotal Cost: ${web3.utils.fromWei(totalCost, 'ether')} $LUCK\nYour Balance: ${web3.utils.fromWei(userBalance, 'ether')} $LUCK`;
+                document.getElementById('ticketCount').value = ticketCount;
+                document.getElementById('ticketCount').classList.remove('hidden');
+                document.getElementById('actionButton').innerText = "Buy Tickets";
+                document.getElementById('actionButton').onclick = () => buyTickets(lotteryId);
+            } else if (action === 'delink_wallet') {
+                document.getElementById('actionTitle').innerText = "Delink Wallet";
+                document.getElementById('actionDetails').innerText = `Wallet: ${userAccount || 'Not connected'}\nClick below to delink your wallet.`;
+                document.getElementById('actionButton').innerText = "Delink Wallet";
+                document.getElementById('actionButton').onclick = delinkWallet;
+            } else {
+                document.getElementById('actionForm').classList.add('hidden');
+                document.getElementById('error').innerText = `Unsupported action: ${action}`;
             }
-        ];
+        }
 
-        const CashbackContractABI = [
-            {
-                "constant": False,
-                "inputs": [],
-                "name": "claimCashback",
-                "outputs": [],
-                "type": "function"
+        async function buyTickets(lotteryId) {
+            try {
+                if (!userAccount) throw new Error("Please connect a wallet.");
+                const ticketCount = document.getElementById('ticketCount').value;
+                if (!ticketCount || ticketCount < 1) throw new Error("Please enter a valid number of tickets.");
+                
+                const ticketPrice = await lotteryContract.methods.ticketPrice().call();
+                const totalCost = web3.utils.toBN(ticketPrice).mul(web3.utils.toBN(ticketCount));
+                const userBalance = await tokenContract.methods.balanceOf(userAccount).call();
+                if (web3.utils.toBN(userBalance).lt(totalCost)) {
+                    throw new Error("Insufficient $LUCK balance for purchase.");
+                }
+
+                await lotteryContract.methods.buyTickets(lotteryId, ticketCount).send({ from: userAccount });
+                document.getElementById('lotteryStatus').innerText = `Successfully bought ${ticketCount} ticket(s) for Lottery #${lotteryId}!`;
+                checkLotteryStatus();
+                document.getElementById('actionForm').classList.add('hidden');
+            } catch (error) {
+                document.getElementById('error').innerText = `Error buying tickets: ${error.message}`;
             }
-        ];
+        }
 
-        const TokenDistributionContractABI = [
-            {
-                "constant": False,
-                "inputs": [],
-                "name": "claimTokens",
-                "outputs": [],
-                "type": "function"
-            }
-        ];
-
-        // Render the app
-        ReactDOM.render(<App />, document.getElementById('root'));
+        window.onload = initWeb3;
     </script>
 </body>
 </html>
